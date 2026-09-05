@@ -3,13 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { useTranslation } from "react-i18next";
 import Cookies from "js-cookie";
-import { Link } from "react-router-dom";
-// feat: 导入全局 toast
 import { toast } from "react-hot-toast";
 
 import { MailList } from "../components/MailList.tsx";
 import { CopyButton } from "../components/CopyButton.tsx";
-// feat: 导入 loginByPassword
 import {
   getEmails,
   getMailboxMeta,
@@ -19,28 +16,16 @@ import {
   verifyTurnstile,
 } from "../services/api.ts";
 import { useConfig } from "../hooks/useConfig.ts";
-// feat: 导入加密函数
 import { encrypt } from "../lib/utlis.ts";
 
-// feat: 导入密码模态框和相关 hook
 import { usePasswordModal } from "../components/password.tsx";
 import PasswordIcon from "../components/icons/Password.tsx";
-import Close from "../components/icons/Close.tsx"; // 导入关闭图标
+import Close from "../components/icons/Close.tsx";
 
-// 图标导入
-import ShieldCheck from "../components/icons/ShieldCheck.tsx";
-import CodeBracketIcon from "../components/icons/CodeBracket.tsx";
-import ServerIcon from "../components/icons/ServerIcon.tsx";
-import ApiIcon from "../components/icons/ApiIcon.tsx";
-import GlobeAltIcon from "../components/icons/GlobeAltIcon.tsx";
-
-// refactor: 将导入从 'database' 包更改为本地的类型定义文件
 import type { Email } from "../database_types.ts";
 import { InfoModal } from "../components/InfoModal.tsx";
 import { MailDetail } from "./MailDetail.tsx";
-// feat: 导入倒计时组件
 import { CountdownTimer } from "../components/CountdownTimer.tsx";
-// feat: 导入发件弹窗
 import { useSenderModal } from "../components/sender.tsx";
 
 export function Home() {
@@ -48,14 +33,12 @@ export function Home() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  // 状态管理
   const [address, setAddress] = useState<string | undefined>(() =>
     Cookies.get("userMailbox"),
   );
   const [mailboxToken, setMailboxToken] = useState<string>(
     () => Cookies.get("mailboxToken") || "",
   );
-  // feat: 新增状态，用于存储邮箱过期时间戳
   const [expiryTimestamp, setExpiryTimestamp] = useState<number | undefined>(
     () => {
       const expiry = Cookies.get("emailExpiry");
@@ -64,31 +47,21 @@ export function Home() {
   );
   const [turnstileToken, setTurnstileToken] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null); // 新增状态，用于存储当前选中的邮件
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string>(
     config.emailDomain[0],
-  ); // feat: 新增状态，用于存储当前选中的域名
-  const [showEmailModal, setShowEmailModal] = useState(false); // feat: 新增状态，用于控制邮件详情模态框的显示
-  const [showPromoModal, setShowPromoModal] = useState(() => {
-    // 如果未启用推广，不弹出
-    if (!config.showAff) return false;
-    // 检查是否已经显示过弹框（使用 localStorage）
-    const hasShown = localStorage.getItem("nbility_promo_shown");
-    return !hasShown; // 如果没显示过，则自动弹出
-  });
+  );
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
-  // feat: 初始化密码模态框
   const { PasswordModal, setShowPasswordModal } = usePasswordModal();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  // feat: 初始化发件弹窗
   const { SenderModal, setShowSenderModal } = useSenderModal(
     address || "",
     mailboxToken,
   );
   const canSendEmails = Boolean(address && mailboxToken && config.sendChannel);
 
-  // feat: 新增状态，用于跟踪当前邮箱地址是否曾经收到过邮件
   const [hasReceivedEmail, setHasReceivedEmail] = useState(false);
 
   // 使用 React Query 获取邮件列表
@@ -161,7 +134,8 @@ export function Home() {
               <button
                 onClick={() => toast.dismiss(toastInstance.id)}
                 className="p-1 rounded-full text-gray-400 hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                aria-label="Close">
+                aria-label="Close"
+              >
                 <Close className="h-5 w-5" />
               </button>
             </div>
@@ -201,13 +175,6 @@ export function Home() {
     },
     [t],
   );
-
-  // feat: 当弹框关闭时，记录到 localStorage
-  useEffect(() => {
-    if (!showPromoModal) {
-      localStorage.setItem("nbility_promo_shown", "true");
-    }
-  }, [showPromoModal]);
 
   // feat(fix): 使用useEffect来检测新邮件、显示密码通知，并控制”查看密码”按钮的可见性
   const prevEmailsLength = useRef(emails.length);
@@ -398,253 +365,151 @@ export function Home() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 md:flex-row justify-center items-start mt-24 mx-6 md:mx-10">
+    <main className="min-h-[calc(100vh-2rem)] w-full px-4 py-5 text-white md:px-8 md:py-8">
       <PasswordModal onLogin={handleLogin} isLoggingIn={isLoggingIn} />
       <SenderModal />
       {selectedEmail && (
         <InfoModal
           showModal={showEmailModal}
           setShowModal={setShowEmailModal}
-          title={t("Email Detail")}>
+          title={t("Email Detail")}
+        >
           <MailDetail
             email={selectedEmail}
             onClose={() => setShowEmailModal(false)}
           />
         </InfoModal>
       )}
-      {config.showAff && showPromoModal && (
-        <InfoModal
-          showModal={showPromoModal}
-          setShowModal={setShowPromoModal}
-          title="🎉 Vmail & Nbility 联动福利">
-          <div className="space-y-4 text-gray-200">
-            {/* 主标题 */}
-            <div className="text-center">
-              <p className="text-base font-semibold text-cyan-400 mb-1">
-                注册即送 Claude Code、Codex 免费额度
-              </p>
-              <p className="text-xs text-gray-400">
-                一站式 AI 编程助手中转平台
+      <div className="mx-auto grid w-full max-w-7xl gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
+        <section className="rounded-xl border border-white/10 bg-zinc-900/80 p-4 shadow-xl md:p-5">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold text-white">临时邮箱</h1>
+              <p className="mt-1 text-sm text-zinc-400">
+                {address ? "当前收件地址" : "创建一个收件地址"}
               </p>
             </div>
+            <span className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+          </div>
 
-            {/* 核心功能 - 简化版 */}
-            <div className="bg-slate-700/50 rounded-lg p-3 space-y-2">
-              <h3 className="text-xs font-semibold text-white flex items-center gap-1.5">
-                <span className="text-cyan-400">✨</span> 核心优势
-              </h3>
-              <ul className="space-y-1.5 text-xs">
-                <li className="flex items-start gap-1.5">
-                  <span className="text-green-400 mt-0.5">✓</span>
-                  <span>注册即用，快速接入 AI Coding 工作流</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-green-400 mt-0.5">✓</span>
-                  <span>两种付费模式，按次、按量计费灵活选择</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-green-400 mt-0.5">✓</span>
-                  <span>支持 Claude、Codex 等多模型灵活切换</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-green-400 mt-0.5">✓</span>
-                  <span>兼容 Claude Code、Cursor、RooCode 等 8+ 工具</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Terminal 样式代码展示 - 紧凑版 */}
-            <div className="bg-gray-900 rounded-lg overflow-hidden border border-gray-700 shadow-lg">
-              {/* Terminal 标题栏 */}
-              <div className="bg-gray-800 px-3 py-1.5 flex items-center gap-2 border-b border-gray-700">
-                <div className="flex gap-1">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+          {address ? (
+            <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-sm font-medium text-zinc-300">
+                  {t("Email address")}
                 </div>
-                <span className="text-[10px] text-gray-400 ml-1">
-                  TERMINAL — zsh
-                </span>
-              </div>
-              {/* Terminal 内容 */}
-              <div className="p-3 font-mono text-xs space-y-1">
-                <div className="text-gray-500"># 配置 Claude</div>
-                <div>
-                  <span className="text-purple-400">export</span>{" "}
-                  <span className="text-cyan-400">ANTHROPIC_BASE_URL</span>
-                  <span className="text-white">=</span>
-                  <span className="text-green-400">
-                    "https://api.nbility.ai"
+                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
+                  <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">
+                    {address}
                   </span>
-                </div>
-                <div>
-                  <span className="text-purple-400">export</span>{" "}
-                  <span className="text-cyan-400">ANTHROPIC_API_KEY</span>
-                  <span className="text-white">=</span>
-                  <span className="text-green-400">"sk-..."</span>
-                </div>
-                <div className="text-gray-500 pt-1"># 开始编码</div>
-                <div>
-                  <span className="text-green-400">$</span>{" "}
-                  <span className="text-white">claude</span>
-                </div>
-              </div>
-            </div>
-
-            {/* CTA 按钮 - 更紧凑 */}
-            <div className="pt-1">
-              <a
-                href="https://nbility.ai/auth/register?aff=Dptp"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full text-center rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-3 font-bold text-white shadow-lg shadow-cyan-500/50 hover:shadow-cyan-500/70 hover:scale-[1.02] transition-all duration-200">
-                🚀 立即注册领取免费额度
-              </a>
-              <p className="text-[10px] text-center text-gray-500 mt-2">
-                通过 Vmail 专属邀请链接注册，享受额外优惠
-              </p>
-            </div>
-          </div>
-        </InfoModal>
-      )}
-      <div className="flex flex-col text-white items-start w-full md:w-[350px] mx-auto gap-2">
-        {/* 左侧信息面板 */}
-        <div className="w-full mb-4 md:max-w-[350px] shrink-0 group group-hover:before:duration-500 group-hover:after:duration-500 after:duration-500 hover:border-cyan-600 hover:before:[box-shadow:_20px_20px_20px_30px_#a21caf] duration-500 before:duration-500 hover:duration-500 hover:after:-right-8 hover:before:right-12 hover:before:-bottom-8 hover:before:blur origin-left hover:decoration-2 relative bg-neutral-800 h-full border text-left p-4 rounded-lg overflow-hidden border-cyan-50/20 before:absolute before:w-12 before:h-12 before:content[''] before:right-1 before:top-1 before:z-10 before:bg-violet-500 before:rounded-full before:blur-lg  after:absolute after:z-10 after:w-20 after:h-20 after:content['']  after:bg-rose-300 after:right-8 after:top-3 after:rounded-full after:blur-lg">
-          <h1 className="text-gray-50 text-xl font-bold mb-3 group-hover:text-cyan-500 duration-500">
-            {t("Virtual Temporary Email")}
-          </h1>
-          {config.showAff && (
-            <button
-              type="button"
-              onClick={() => setShowPromoModal(true)}
-              className="mb-6 text-left text-sm text-cyan-400 hover:text-cyan-300 transition-colors underline underline-offset-4 decoration-cyan-500/60">
-              Vmail & Nbility 联动注册送 Claude Code、Codex 免费额度
-            </button>
-          )}
-          <div className="flex flex-col gap-4 text-sm text-gray-200">
-            <a
-              href="https://github.com/oiov/vmail"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center after:content-['↗'] gap-1.5 hover:text-cyan-400 transition-colors cursor-pointer">
-              <CodeBracketIcon className="size-5 text-blue-400" />{" "}
-              {t("Open Source")}
-            </a>
-            <div className="flex items-center gap-1.5">
-              <ServerIcon className="size-5 text-blue-400" />
-              {t("Stable - 1M+ emails processed")}
-            </div>
-            <Link
-              to="/api-docs"
-              className="flex items-center after:content-['↗'] gap-1.5 hover:text-cyan-400 transition-colors cursor-pointer">
-              <ApiIcon className="size-5 text-blue-400" />
-              {t("Open RESTful API")}
-            </Link>
-            <div className="flex items-center gap-1.5">
-              <GlobeAltIcon className="size-5 text-blue-400" />
-              {t("Multi-domain configurable")}
-            </div>
-          </div>
-        </div>
-
-        {/* 根据是否存在邮箱地址显示不同内容 */}
-        {address ? (
-          <div className="w-full md:max-w-[350px] mb-4">
-            <div className="mb-4 font-semibold text-sm">
-              {t("Email address")}
-            </div>
-            <div className="flex items-center text-zinc-100 bg-white/10 backdrop-blur-xl shadow-inner px-4 py-4 rounded-md w-full">
-              <span className="truncate">{address}</span>
-              <CopyButton text={address} className="p-1 rounded-md ml-auto" />
-            </div>
-            {/* 修改：将 onExtend 更改为 onReset 并传递 handleResetExpiry */}
-            {expiryTimestamp && (
-              <CountdownTimer
-                expiryTimestamp={expiryTimestamp}
-                onReset={handleResetExpiry}
-              />
-            )}
-            <button
-              onClick={handleStopAddress}
-              className="py-2.5 rounded-md w-full bg-cyan-600 hover:opacity-90 disabled:cursor-not-allowed disabled:bg-zinc-500">
-              {t("Stop")}
-            </button>
-          </div>
-        ) : (
-          <div className="w-full md:max-w-[350px]">
-            {/* 邮箱域名后缀选择 */}
-            <div className="mb-4">
-              <div className="mb-3 font-semibold">{t("Domain")}</div>
-              <select
-                value={selectedDomain}
-                onChange={(e) => setSelectedDomain(e.target.value)}
-                className="w-full p-2.5 rounded-md bg-white/10 text-white border border-cyan-50/20">
-                {config.emailDomain.map((domain) => (
-                  <option key={domain} value={domain} className="text-black">
-                    @{domain}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {config.turnstileEnabled && (
-              <div className="text-sm relative mb-4">
-                <div className="mb-3 font-semibold">{t("Validater")}</div>
-                <div className="[&_iframe]:!w-full h-[65px] max-w-full bg-gray-700">
-                  <Turnstile
-                    className="w-full border border-cyan-50/20"
-                    siteKey={config.turnstileKey}
-                    onSuccess={setTurnstileToken}
-                    options={{ theme: "dark", size: "flexible" }}
+                  <CopyButton
+                    text={address}
+                    className="shrink-0 rounded-md p-1"
                   />
                 </div>
               </div>
-            )}
-            <button
-              onClick={handleCreateAddress}
-              disabled={config.turnstileEnabled && !turnstileToken}
-              className="py-2.5 rounded-md w-full bg-cyan-600 hover:opacity-90 disabled:cursor-not-allowed disabled:bg-zinc-500">
-              {t("Create temporary email")}
-            </button>
-            <p
-              className="mt-4 text-sm text-cyan-500 cursor-pointer"
-              onClick={() => setShowPasswordModal(true)}>
-              <PasswordIcon className="inline-block w-4 h-4 mr-2" />
-              {t("Have a password? Login.")}
-            </p>
-          </div>
-        )}
-      </div>
+              {expiryTimestamp && (
+                <CountdownTimer
+                  expiryTimestamp={expiryTimestamp}
+                  onReset={handleResetExpiry}
+                />
+              )}
+              <button
+                type="button"
+                onClick={handleStopAddress}
+                className="w-full rounded-lg border border-rose-400/30 bg-rose-400/10 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
+              >
+                {t("Stop")}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-zinc-300">
+                  {t("Domain")}
+                </label>
+                <select
+                  value={selectedDomain}
+                  onChange={(e) => setSelectedDomain(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20"
+                >
+                  {config.emailDomain.map((domain) => (
+                    <option
+                      key={domain}
+                      value={domain}
+                      className="bg-zinc-900 text-white"
+                    >
+                      @{domain}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {config.turnstileEnabled && (
+                <div>
+                  <div className="mb-2 text-sm font-medium text-zinc-300">
+                    {t("Validater")}
+                  </div>
+                  <div className="h-[65px] max-w-full overflow-hidden rounded-lg bg-zinc-800 [&_iframe]:!w-full">
+                    <Turnstile
+                      className="w-full border border-white/10"
+                      siteKey={config.turnstileKey}
+                      onSuccess={setTurnstileToken}
+                      options={{ theme: "dark", size: "flexible" }}
+                    />
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleCreateAddress}
+                disabled={config.turnstileEnabled && !turnstileToken}
+                className="w-full rounded-lg bg-cyan-500 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+              >
+                {t("Create temporary email")}
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 py-2.5 text-sm text-cyan-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                onClick={() => setShowPasswordModal(true)}
+              >
+                <PasswordIcon className="h-4 w-4" />
+                {t("Have a password? Login.")}
+              </button>
+            </div>
+          )}
+        </section>
 
-      {/* 右侧邮件列表或邮件详情 */}
-      {/* refactor: 始终渲染 MailList，并通过 selectedEmail prop 控制其内部显示逻辑 */}
-      <div className="w-full flex-1 overflow-hidden">
-        <MailList
-          isAddressCreated={!!address}
-          emails={emails}
-          isLoading={isLoading}
-          isFetching={isFetching}
-          onDelete={handleDeleteEmails}
-          isDeleting={deleteMutation.isPending}
-          onRefresh={handleRefresh} // feat: 传递新的刷新函数
-          selectedIds={selectedIds}
-          setSelectedIds={setSelectedIds}
-          onSelectEmail={handleSelectEmail} // 传递选择邮件的函数
-          // feat: 传递新状态和回调函数
-          showViewPasswordButton={hasReceivedEmail}
-          onShowPassword={() => {
-            const password = getPassword();
-            if (password) {
-              showPasswordToast(password);
-            }
-          }}
-          // feat: 传递当前选中的邮件和关闭详情页的回调
-          selectedEmail={selectedEmail}
-          onCloseDetail={handleCloseDetail}
-          onExpand={handleExpandEmail} // feat: 传递展开邮件的回调
-          canSendEmails={canSendEmails}
-          onOpenSender={() => setShowSenderModal(true)} // 打开发件弹窗
-        />
+        {/* 右侧邮件列表或邮件详情 */}
+        {/* refactor: 始终渲染 MailList，并通过 selectedEmail prop 控制其内部显示逻辑 */}
+        <section className="min-h-[32rem] min-w-0 overflow-hidden">
+          <MailList
+            isAddressCreated={!!address}
+            emails={emails}
+            isLoading={isLoading}
+            isFetching={isFetching}
+            onDelete={handleDeleteEmails}
+            isDeleting={deleteMutation.isPending}
+            onRefresh={handleRefresh} // feat: 传递新的刷新函数
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            onSelectEmail={handleSelectEmail} // 传递选择邮件的函数
+            // feat: 传递新状态和回调函数
+            showViewPasswordButton={hasReceivedEmail}
+            onShowPassword={() => {
+              const password = getPassword();
+              if (password) {
+                showPasswordToast(password);
+              }
+            }}
+            // feat: 传递当前选中的邮件和关闭详情页的回调
+            selectedEmail={selectedEmail}
+            onCloseDetail={handleCloseDetail}
+            onExpand={handleExpandEmail} // feat: 传递展开邮件的回调
+            canSendEmails={canSendEmails}
+            onOpenSender={() => setShowSenderModal(true)} // 打开发件弹窗
+          />
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

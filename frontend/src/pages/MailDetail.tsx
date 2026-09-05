@@ -1,10 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns/format";
+import { zhCN } from "date-fns/locale";
 
 // 导入图标
-import UserCircleIcon from '../components/icons/UserCircleIcon.tsx';
+import UserCircleIcon from "../components/icons/UserCircleIcon.tsx";
 
-import type { Email } from '../database_types'; // 导入 Email 类型
+import type { Email } from "../database_types"; // 导入 Email 类型
 
 // 定义 MailDetail 组件的 props
 interface MailDetailProps {
@@ -22,32 +23,32 @@ export function MailDetail({ email, onClose }: MailDetailProps) {
       <div className="flex items-start mb-6">
         <div className="flex items-start gap-4 text-sm">
           <div>
-            <UserCircleIcon className="w-6 h-6"/>
+            <UserCircleIcon className="w-6 h-6" />
           </div>
           <div className="grid gap-1">
             <div className="font-semibold">{email.from.name}</div>
             <div className="line-clamp-1 text-xs">{email.subject}</div>
             <div className="line-clamp-1 text-xs">
-              <span className="font-medium">{t("Reply-To:")}</span> {email.from.address}
+              <span className="font-medium">{t("Reply-To:")}</span>{" "}
+              {email.from.address}
             </div>
           </div>
         </div>
         {email.date && (
           <div className="ml-auto text-xs text-muted-foreground">
-            {format(new Date(email.date), "PPpp")}
+            {format(new Date(email.date), "PPpp", { locale: zhCN })}
           </div>
         )}
       </div>
       {/* fix: 调整 iframe 的容器和样式，以适应在 MailList 中显示 */}
       <div className="flex-1 flex text-sm bg-[#ffffffd6] backdrop-blur-xl rounded-md min-h-0">
         <iframe
-            srcDoc={email.html || `<pre>${email.text}</pre>`}
-            className="w-full h-[60vh] border-0"
-            sandbox="allow-popups allow-popups-to-escape-sandbox"
-            title="Email Content"
-          />
+          srcDoc={email.html || `<pre>${email.text}</pre>`}
+          className="w-full h-[60vh] border-0"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          title="邮件内容"
+        />
       </div>
     </div>
   );
 }
-
