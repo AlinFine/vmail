@@ -3,7 +3,11 @@ name: Deploy to Cloudflare
 
 # 触发条件
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
 
 jobs:
   # 新增一个 job 用于检查密钥是否存在
