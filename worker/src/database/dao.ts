@@ -128,7 +128,14 @@ export async function deleteEmails(db: DrizzleD1Database, ids: string[]) {
 export async function deleteExpiredEmails(db: DrizzleD1Database, expirationTime: Date) {
     try {
         // 使用Drizzle的lt（小于）操作符来比较createdAt字段和expirationTime
-        const result = await db.delete(emails).where(lt(emails.createdAt, expirationTime)).execute();
+        const result = await db.delete(emails).where(and(
+            lt(emails.createdAt, expirationTime),
+            sql`NOT EXISTS (
+              SELECT 1 FROM mailboxes
+              WHERE mailboxes.address = emails.message_to
+                AND mailboxes.is_permanent = 1
+            )`,
+        )).execute();
         // 返回受影响的行数，即已删除的邮件数量
         return { count: result.rowsAffected };
     } catch (e) {
@@ -232,6 +239,39 @@ export async function findMailboxByAddress(db: DrizzleD1Database, address: strin
   } catch (e) {
     console.error('findMailboxByAddress error:', e);
     return null;
+  }
+}
+
+export async function findPermanentMailboxByAddress(db: DrizzleD1Database, address: string) {
+  try {
+    const result = await db
+      .select()
+      .from(mailboxes)
+      .where(and(eq(mailboxes.address, address.trim().toLowerCase()), eq(mailboxes.isPermanent, true)))
+      .execute();
+    return result.length === 1 ? result[0] : null;
+  } catch (e) {
+    console.error('findPermanentMailboxByAddress error:', e);
+    return null;
+  }
+}
+
+export async function setMailboxPassword(
+  db: DrizzleD1Database,
+  address: string,
+  passwordHash: string,
+  passwordSalt: string,
+) {
+  try {
+    const result = await db
+      .update(mailboxes)
+      .set({ passwordHash, passwordSalt, verifiedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(mailboxes.address, address.trim().toLowerCase()), eq(mailboxes.isPermanent, true)))
+      .execute();
+    return result.rowsAffected > 0;
+  } catch (e) {
+    console.error('setMailboxPassword error:', e);
+    return false;
   }
 }
 

@@ -4,6 +4,7 @@ import { Turnstile } from "@marsidev/react-turnstile";
 import { useTranslation } from "react-i18next";
 import Cookies from "js-cookie";
 import { toast } from "react-hot-toast";
+import { Link } from "react-router-dom";
 
 import { MailList } from "../components/MailList.tsx";
 import { CopyButton } from "../components/CopyButton.tsx";
@@ -14,6 +15,8 @@ import {
   loginByPassword,
   refreshMailboxToken,
   verifyTurnstile,
+  createPermanentMailbox,
+  setPermanentMailboxPassword,
 } from "../services/api.ts";
 import { useConfig } from "../hooks/useConfig.ts";
 import { encrypt } from "../lib/utlis.ts";
@@ -36,6 +39,12 @@ export function Home() {
   const [address, setAddress] = useState<string | undefined>(() =>
     Cookies.get("userMailbox"),
   );
+  const [isPermanentMailbox, setIsPermanentMailbox] = useState(
+    () => Cookies.get("permanentMailbox") === "1",
+  );
+  const [needsPermanentPassword, setNeedsPermanentPassword] = useState(
+    () => Cookies.get("permanentPasswordPending") === "1",
+  );
   const [mailboxToken, setMailboxToken] = useState<string>(
     () => Cookies.get("mailboxToken") || "",
   );
@@ -52,6 +61,13 @@ export function Home() {
     config.emailDomain[0],
   );
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [mailboxMode, setMailboxMode] = useState<"temporary" | "permanent">(
+    () => (Cookies.get("permanentMailbox") === "1" ? "permanent" : "temporary"),
+  );
+  const [permanentLocalPart, setPermanentLocalPart] = useState("");
+  const [permanentPassword, setPermanentPassword] = useState("");
+  const [isCreatingPermanent, setIsCreatingPermanent] = useState(false);
+  const [isSettingPermanentPassword, setIsSettingPermanentPassword] = useState(false);
 
   const { PasswordModal, setShowPasswordModal } = usePasswordModal();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -72,10 +88,11 @@ export function Home() {
     refetch,
     error: emailsError,
   } = useQuery<Email[], Error>({
-    queryKey: ["emails", address],
-    queryFn: () => getEmails(address!, 50),
+    queryKey: ["emails", address, mailboxToken],
+    queryFn: () => getEmails(address!, 50, mailboxToken || undefined),
     enabled: !!address, // 只有在 address 存在时才执行查询
-    refetchInterval: false,
+    refetchInterval: () =>
+      document.visibilityState === "visible" ? 5000 : false,
     retry: false, // 失败后不自动重试
   });
 
@@ -90,11 +107,11 @@ export function Home() {
   const mailboxMetaSignatureRef = useRef<string | null>(null);
 
   const { data: mailboxMeta } = useQuery({
-    queryKey: ["emails-meta", address],
-    queryFn: () => getMailboxMeta(address!),
+    queryKey: ["emails-meta", address, mailboxToken],
+    queryFn: () => getMailboxMeta(address!, mailboxToken || undefined),
     enabled: !!address,
     refetchInterval: () =>
-      document.visibilityState === "visible" ? 60000 : false,
+      document.visibilityState === "visible" ? 5000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: false,
@@ -230,6 +247,11 @@ export function Home() {
         Cookies.remove("mailboxToken");
       }
       setAddress(mailbox);
+      setIsPermanentMailbox(false);
+      setNeedsPermanentPassword(false);
+      setMailboxMode("temporary");
+      Cookies.remove("permanentMailbox");
+      Cookies.remove("permanentPasswordPending");
       setMailboxToken(authorization.mailboxToken || "");
       setExpiryTimestamp(expires); // 更新状态
       setHasReceivedEmail(false); // 重置接收邮件状态
@@ -240,13 +262,77 @@ export function Home() {
     }
   };
 
+  const handleCreatePermanentAddress = async () => {
+    const localPart = permanentLocalPart.trim().toLowerCase();
+    if (!localPart) {
+      toast.error("请输入邮箱名称");
+      return;
+    }
+    if (config.turnstileEnabled && !turnstileToken) {
+      toast.error(t("No captcha response"));
+      return;
+    }
+
+    setIsCreatingPermanent(true);
+    try {
+      const result = await createPermanentMailbox(localPart, selectedDomain, config.turnstileEnabled ? turnstileToken : undefined);
+      Cookies.set("userMailbox", result.address);
+      Cookies.set("permanentMailbox", "1");
+      Cookies.set("permanentPasswordPending", "1", { expires: 30 });
+      Cookies.remove("emailExpiry");
+      setAddress(result.address);
+      setIsPermanentMailbox(true);
+      setNeedsPermanentPassword(true);
+      if (result.mailboxToken) {
+        Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
+      }
+      setMailboxToken(result.mailboxToken || "");
+      setExpiryTimestamp(undefined);
+      setHasReceivedEmail(false);
+      toast.success("固定邮箱已创建，请先接收一封邮件");
+    } catch (error: any) {
+      toast.error(error?.message || "固定邮箱创建失败");
+    } finally {
+      setIsCreatingPermanent(false);
+    }
+  };
+
+  const handleSetPermanentPassword = async () => {
+    if (!address || permanentPassword.length < 8) {
+      toast.error("密码至少需要 8 位");
+      return;
+    }
+    setIsSettingPermanentPassword(true);
+    try {
+      const result = await setPermanentMailboxPassword(address, permanentPassword, mailboxToken || undefined);
+      if (result.mailboxToken) {
+        Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
+        setMailboxToken(result.mailboxToken);
+      }
+      setPermanentPassword("");
+      Cookies.remove("permanentPasswordPending");
+      setNeedsPermanentPassword(false);
+      toast.success("密码设置成功，以后可使用邮箱和密码登录");
+      queryClient.invalidateQueries({ queryKey: ["emails", address] });
+    } catch (error: any) {
+      toast.error(error?.message || "密码设置失败");
+    } finally {
+      setIsSettingPermanentPassword(false);
+    }
+  };
+
   // 停止使用当前邮箱地址
   const handleStopAddress = () => {
     Cookies.remove("userMailbox");
     Cookies.remove("mailboxToken");
     // feat: 移除过期时间 cookie
     Cookies.remove("emailExpiry");
+    Cookies.remove("permanentMailbox");
+    Cookies.remove("permanentPasswordPending");
     setAddress(undefined);
+    setIsPermanentMailbox(false);
+    setNeedsPermanentPassword(false);
+    setMailboxMode("temporary");
     setMailboxToken("");
     mailboxMetaSignatureRef.current = null;
     setHasReceivedEmail(false); // 重置状态
@@ -288,7 +374,7 @@ export function Home() {
 
   // 删除邮件的 useMutation hook
   const deleteMutation = useMutation({
-    mutationFn: (ids: string[]) => deleteEmails(ids),
+    mutationFn: (ids: string[]) => deleteEmails(ids, address, mailboxToken || undefined),
     onSuccess: () => {
       toast.success(t("Emails deleted successfully")); // feat: 使用全局 toast 提示
       setSelectedIds([]); // 清空选择
@@ -329,6 +415,11 @@ export function Home() {
         Cookies.remove("mailboxToken");
       }
       setAddress(data.address);
+      setIsPermanentMailbox(false);
+      setNeedsPermanentPassword(false);
+      setMailboxMode("temporary");
+      Cookies.remove("permanentMailbox");
+      Cookies.remove("permanentPasswordPending");
       setMailboxToken(data.mailboxToken || "");
       setExpiryTimestamp(expires); // 更新状态
       setShowPasswordModal(false); // 关闭模态框
@@ -384,7 +475,7 @@ export function Home() {
         <section className="rounded-xl border border-white/10 bg-zinc-900/80 p-4 shadow-xl md:p-5">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-white">临时邮箱</h1>
+              <h1 className="text-xl font-semibold text-white">{isPermanentMailbox ? "固定邮箱" : "临时邮箱"}</h1>
               <p className="mt-1 text-sm text-zinc-400">
                 {address ? "当前收件地址" : "创建一个收件地址"}
               </p>
@@ -408,6 +499,29 @@ export function Home() {
                   />
                 </div>
               </div>
+              {isPermanentMailbox && needsPermanentPassword && emails.length > 0 && (
+                <div className="space-y-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
+                  <div>
+                    <div className="text-sm font-medium text-amber-100">已收到邮件</div>
+                    <p className="mt-1 text-xs text-zinc-400">设置密码后，这个邮箱将固定保留，可随时登录查看历史邮件。</p>
+                  </div>
+                  <input
+                    type="password"
+                    value={permanentPassword}
+                    onChange={(event) => setPermanentPassword(event.target.value)}
+                    placeholder="设置自定义密码（至少 8 位）"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSetPermanentPassword}
+                    disabled={isSettingPermanentPassword}
+                    className="w-full rounded-lg bg-amber-300 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-200 disabled:opacity-60"
+                  >
+                    {isSettingPermanentPassword ? "正在设置..." : "保存密码"}
+                  </button>
+                </div>
+              )}
               {expiryTimestamp && (
                 <CountdownTimer
                   expiryTimestamp={expiryTimestamp}
@@ -424,6 +538,37 @@ export function Home() {
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+                <button
+                  type="button"
+                  onClick={() => setMailboxMode("temporary")}
+                  className={`rounded-md px-3 py-2 text-sm transition ${mailboxMode === "temporary" ? "bg-cyan-500 text-zinc-950" : "text-zinc-300 hover:bg-white/10"}`}
+                >
+                  临时邮箱
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMailboxMode("permanent")}
+                  className={`rounded-md px-3 py-2 text-sm transition ${mailboxMode === "permanent" ? "bg-cyan-500 text-zinc-950" : "text-zinc-300 hover:bg-white/10"}`}
+                >
+                  固定邮箱
+                </button>
+              </div>
+              {mailboxMode === "permanent" && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-300">邮箱名称</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={permanentLocalPart}
+                      onChange={(event) => setPermanentLocalPart(event.target.value.replace(/[^a-zA-Z0-9._-]/g, "").toLowerCase())}
+                      placeholder="例如：mycode"
+                      maxLength={64}
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                    />
+                    <span className="text-sm text-zinc-400">@{selectedDomain}</span>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="mb-2 block text-sm font-medium text-zinc-300">
                   {t("Domain")}
@@ -461,11 +606,18 @@ export function Home() {
               )}
               <button
                 type="button"
-                onClick={handleCreateAddress}
-                disabled={config.turnstileEnabled && !turnstileToken}
+                onClick={mailboxMode === "permanent" ? handleCreatePermanentAddress : handleCreateAddress}
+                disabled={
+                  (config.turnstileEnabled && !turnstileToken) ||
+                  isCreatingPermanent
+                }
                 className="w-full rounded-lg bg-cyan-500 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
               >
-                {t("Create temporary email")}
+                {mailboxMode === "permanent"
+                  ? isCreatingPermanent
+                    ? "正在创建..."
+                    : "创建固定邮箱"
+                  : t("Create temporary email")}
               </button>
               <button
                 type="button"
@@ -475,6 +627,12 @@ export function Home() {
                 <PasswordIcon className="h-4 w-4" />
                 {t("Have a password? Login.")}
               </button>
+              <Link
+                to="/mailbox-login"
+                className="block text-center text-sm text-zinc-400 underline-offset-4 hover:text-cyan-300 hover:underline"
+              >
+                固定邮箱登录
+              </Link>
             </div>
           )}
         </section>

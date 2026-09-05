@@ -10,15 +10,20 @@ const API_BASE_URL = "/api";
 export async function getEmails(
   address: string,
   limit: number = 50,
+  mailboxToken?: string,
 ): Promise<Email[]> {
   const response = await fetch(`${API_BASE_URL}/emails`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(mailboxToken ? { Authorization: `Bearer ${mailboxToken}` } : {}),
+    },
     // fix: 请求体中只发送 address
-    body: JSON.stringify({ address, limit }),
+    body: JSON.stringify({ address, limit, ...(mailboxToken ? { token: mailboxToken } : {}) }),
   });
   if (!response.ok) {
-    throw new Error("Network response was not ok");
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "获取邮件失败");
   }
   return response.json();
 }
@@ -28,14 +33,18 @@ export interface MailboxMeta {
   latestEmailCreatedAt: string | null;
 }
 
-export async function getMailboxMeta(address: string): Promise<MailboxMeta> {
+export async function getMailboxMeta(address: string, mailboxToken?: string): Promise<MailboxMeta> {
   const response = await fetch(`${API_BASE_URL}/emails/meta`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address }),
+    headers: {
+      "Content-Type": "application/json",
+      ...(mailboxToken ? { Authorization: `Bearer ${mailboxToken}` } : {}),
+    },
+    body: JSON.stringify({ address, ...(mailboxToken ? { token: mailboxToken } : {}) }),
   });
   if (!response.ok) {
-    throw new Error("Failed to fetch mailbox meta");
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "获取邮箱信息失败");
   }
   return response.json();
 }
@@ -65,8 +74,10 @@ export async function verifyTurnstile(
 }
 
 // feat: 添加获取单封邮件详情的函数
-export async function getEmailById(id: string): Promise<Email> {
-  const response = await fetch(`${API_BASE_URL}/emails/${id}`);
+export async function getEmailById(id: string, mailboxToken?: string): Promise<Email> {
+  const response = await fetch(`${API_BASE_URL}/emails/${id}`, {
+    headers: mailboxToken ? { Authorization: `Bearer ${mailboxToken}` } : undefined,
+  });
   if (!response.ok) {
     throw new Error("Failed to fetch email");
   }
@@ -75,15 +86,23 @@ export async function getEmailById(id: string): Promise<Email> {
 
 // 删除邮件
 // fix: 移除 deleteEmails 函数中的 token 参数
-export async function deleteEmails(ids: string[]): Promise<{ count: number }> {
+export async function deleteEmails(
+  ids: string[],
+  address?: string,
+  mailboxToken?: string,
+): Promise<{ count: number }> {
   const response = await fetch(`${API_BASE_URL}/delete-emails`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(mailboxToken ? { Authorization: `Bearer ${mailboxToken}` } : {}),
+    },
     // fix: 请求体中只发送 ids
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({ ids, ...(address ? { address } : {}), ...(mailboxToken ? { token: mailboxToken } : {}) }),
   });
   if (!response.ok) {
-    throw new Error("Failed to delete emails");
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || "删除邮件失败");
   }
   return response.json();
 }
@@ -104,6 +123,68 @@ export async function loginByPassword(password: string): Promise<{
     throw new Error(errorData.message || "Login failed");
   }
   return response.json();
+}
+
+export interface PermanentMailboxResponse {
+  success: boolean;
+  address: string;
+  mailboxToken?: string;
+  needsEmail?: boolean;
+  permanent?: boolean;
+  hasPassword?: boolean;
+}
+
+export async function createPermanentMailbox(
+  localPart: string,
+  domain: string,
+  token?: string,
+): Promise<PermanentMailboxResponse> {
+  const response = await fetch(`${API_BASE_URL}/permanent-mailboxes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ localPart, domain, ...(token ? { token } : {}) }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || "固定邮箱创建失败");
+  }
+  return data;
+}
+
+export async function setPermanentMailboxPassword(
+  address: string,
+  password: string,
+  mailboxToken?: string,
+): Promise<PermanentMailboxResponse> {
+  const response = await fetch(`${API_BASE_URL}/permanent-mailboxes/password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(mailboxToken ? { Authorization: `Bearer ${mailboxToken}` } : {}),
+    },
+    body: JSON.stringify({ address, password, ...(mailboxToken ? { token: mailboxToken } : {}) }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || "密码设置失败");
+  }
+  return data;
+}
+
+export async function loginPermanentMailbox(
+  address: string,
+  password: string,
+): Promise<PermanentMailboxResponse> {
+  const response = await fetch(`${API_BASE_URL}/permanent-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || "邮箱或密码错误");
+  }
+  return data;
 }
 
 export async function refreshMailboxToken(

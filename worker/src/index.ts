@@ -2,14 +2,14 @@ import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
 import { cors } from 'hono/cors';
 // 导入数据库相关的模块
-import { deleteEmails, findEmailById, getEmailsByMessageTo, insertEmail, deleteExpiredEmails, insertApiKey, getSiteStats, incrementEmailsReceived, incrementApiKeysCreated, incrementAddressesCreated, incrementDailyAddressesCreated, incrementDailyEmailsReceived, incrementDailyApiKeysCreated, getMailboxMetaByAddress, incrementAndGetApiRateWindowCount } from './database/dao';
+import { deleteEmails, findEmailById, getEmailsByMessageTo, insertEmail, deleteExpiredEmails, insertApiKey, getSiteStats, incrementEmailsReceived, incrementApiKeysCreated, incrementAddressesCreated, incrementDailyAddressesCreated, incrementDailyEmailsReceived, incrementDailyApiKeysCreated, getMailboxMetaByAddress, incrementAndGetApiRateWindowCount, findMailboxByAddress, findPermanentMailboxByAddress, insertMailbox, setMailboxPassword, getMailboxMessageCount } from './database/dao';
 import { getD1DB } from './database/db';
 import { InsertEmail, insertEmailSchema } from './database/schema';
 import { nanoid } from 'nanoid/non-secure';
 import PostalMime from 'postal-mime';
 import { EmailMessage } from 'cloudflare:email';
 // 导入加解密工具函数
-import { decrypt } from './utils';
+import { decrypt, hashMailboxPassword, timingSafeEqual } from './utils';
 // 导入 v1 API
 import v1Api from './api/v1';
 import { isOpenApiEnabled, requireOpenApi } from './openapi';
@@ -80,6 +80,47 @@ function parsePositiveLimit(value: string | undefined, fallback: number): number
 
 function getMailboxTokenTtlSeconds(): number {
   return 24 * 60 * 60;
+}
+
+function getPermanentMailboxTokenTtlSeconds(): number {
+  return 30 * 24 * 60 * 60;
+}
+
+function normalizeMailboxAddress(address: string): string {
+  return address.trim().toLowerCase();
+}
+
+function isValidMailboxLocalPart(localPart: string): boolean {
+  return /^[a-z0-9][a-z0-9._-]{1,62}[a-z0-9]$/.test(localPart);
+}
+
+async function authorizeMailboxAccess(
+  c: any,
+  address: string,
+  bodyToken?: string,
+): Promise<{ allowed: true; mailbox: any } | { allowed: false; response: Response }> {
+  const normalizedAddress = normalizeMailboxAddress(address);
+  const db = getD1DB(c.env.DB);
+  const mailbox = await findMailboxByAddress(db, normalizedAddress);
+
+  // Existing temporary mailboxes remain public for compatibility. Permanent
+  // mailboxes require their creation/login token even before a password exists.
+  if (!mailbox?.isPermanent) {
+    return { allowed: true, mailbox };
+  }
+
+  const token = getBearerToken(c.req.header('Authorization')) || bodyToken || null;
+  const authorizedAddress = token && c.env.MAILBOX_TOKEN_SECRET
+    ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET)
+    : null;
+  if (authorizedAddress !== normalizedAddress) {
+    return {
+      allowed: false,
+      response: c.json({ code: 'MAILBOX_UNAUTHORIZED', message: '请先登录该固定邮箱' }, 401),
+    };
+  }
+
+  return { allowed: true, mailbox };
 }
 
 function isSiteUnlocked(request: Request, env: Env): boolean {
@@ -206,6 +247,156 @@ api.post('/verify', turnstile, async (c) => {
   });
 });
 
+// Create a persistent mailbox. Password setup is enabled after the mailbox receives its first email.
+api.post('/permanent-mailboxes', turnstile, async (c) => {
+  if (!c.env.MAILBOX_TOKEN_SECRET) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置，请设置 MAILBOX_TOKEN_SECRET' }, 503);
+  }
+  const body = c.get('parsedBody') as { localPart?: string; domain?: string };
+  const localPart = body?.localPart?.trim().toLowerCase() || '';
+  const domain = body?.domain?.trim().toLowerCase() || '';
+
+  if (!isValidMailboxLocalPart(localPart)) {
+    return c.json({ code: 'INVALID_MAILBOX', message: '邮箱名称需为 3-64 位字母、数字或 ._- 符号' }, 400);
+  }
+  if (!domain || !isAllowedMailboxAddress(`mailbox@${domain}`, c.env.EMAIL_DOMAIN)) {
+    return c.json({ code: 'INVALID_MAILBOX', message: '邮箱域名未配置' }, 400);
+  }
+
+  const address = `${localPart}@${domain}`;
+  const db = getD1DB(c.env.DB);
+  const existing = await findMailboxByAddress(db, address);
+  if (existing) {
+    return c.json({
+      code: 'MAILBOX_EXISTS',
+      message: existing.isPermanent && existing.passwordHash
+        ? '该固定邮箱已存在，请直接登录'
+        : '该邮箱地址已存在',
+      address,
+      hasPassword: Boolean(existing.passwordHash),
+    }, 409);
+  }
+
+  const now = new Date();
+  try {
+    await insertMailbox(db, {
+      id: nanoid(),
+      address,
+      domain,
+      expiresAt: null,
+      apiKeyId: 'web',
+      isPermanent: true,
+      passwordHash: null,
+      passwordSalt: null,
+      verifiedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch {
+    return c.json({
+      code: 'MAILBOX_EXISTS',
+      message: '该邮箱地址已存在，请直接登录',
+      address,
+    }, 409);
+  }
+
+  await incrementAddressesCreated(db);
+  await incrementDailyAddressesCreated(db);
+
+  const mailboxToken = await createMailboxToken(
+    address,
+    c.env.MAILBOX_TOKEN_SECRET,
+    Date.now(),
+    getPermanentMailboxTokenTtlSeconds(),
+  );
+  return c.json({ success: true, address, needsEmail: true, mailboxToken }, 201);
+});
+
+// Set or change the password for a persistent mailbox.
+api.post('/permanent-mailboxes/password', async (c) => {
+  if (!c.env.MAILBOX_TOKEN_SECRET) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置，请设置 MAILBOX_TOKEN_SECRET' }, 503);
+  }
+  let body: { address?: string; password?: string; currentPassword?: string; token?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ code: 'INVALID_REQUEST', message: '请求格式无效' }, 400);
+  }
+
+  const address = normalizeMailboxAddress(body.address || '');
+  const password = body.password?.trim() || '';
+  if (!address || !password) {
+    return c.json({ code: 'INVALID_REQUEST', message: '邮箱和密码不能为空' }, 400);
+  }
+  if (password.length < 8 || password.length > 128) {
+    return c.json({ code: 'INVALID_PASSWORD', message: '密码长度需为 8-128 位' }, 400);
+  }
+
+  const db = getD1DB(c.env.DB);
+  const mailbox = await findPermanentMailboxByAddress(db, address);
+  if (!mailbox) {
+    return c.json({ code: 'MAILBOX_NOT_FOUND', message: '固定邮箱不存在' }, 404);
+  }
+
+  const token = getBearerToken(c.req.header('Authorization')) || body.token || null;
+  const tokenAddress = token ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET) : null;
+  if (tokenAddress !== address) {
+    return c.json({ code: 'MAILBOX_UNAUTHORIZED', message: '请先登录该固定邮箱' }, 401);
+  }
+
+  if (!mailbox.passwordHash || !mailbox.passwordSalt) {
+    const messageCount = await getMailboxMessageCount(db, address);
+    if (messageCount < 1) {
+      return c.json({ code: 'EMAIL_REQUIRED', message: '收到至少一封邮件后才能设置密码' }, 409);
+    }
+  }
+
+  const passwordData = await hashMailboxPassword(password);
+  const updated = await setMailboxPassword(db, address, passwordData.hash, passwordData.salt);
+  if (!updated) {
+    return c.json({ code: 'MAILBOX_NOT_FOUND', message: '固定邮箱不存在' }, 404);
+  }
+
+  const mailboxToken = c.env.MAILBOX_TOKEN_SECRET
+    ? await createMailboxToken(address, c.env.MAILBOX_TOKEN_SECRET, Date.now(), getPermanentMailboxTokenTtlSeconds())
+    : undefined;
+  return c.json({ success: true, address, mailboxToken });
+});
+
+api.post('/permanent-login', async (c) => {
+  let body: { address?: string; password?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ code: 'INVALID_REQUEST', message: '请求格式无效' }, 400);
+  }
+
+  const address = normalizeMailboxAddress(body.address || '');
+  const password = body.password || '';
+  const db = getD1DB(c.env.DB);
+  const mailbox = await findPermanentMailboxByAddress(db, address);
+  if (!mailbox || !mailbox.passwordHash || !mailbox.passwordSalt) {
+    return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
+  }
+
+  const passwordData = await hashMailboxPassword(password, mailbox.passwordSalt);
+  if (!timingSafeEqual(passwordData.hash, mailbox.passwordHash)) {
+    return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
+  }
+  if (!c.env.MAILBOX_TOKEN_SECRET) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
+  }
+
+  const mailboxToken = await createMailboxToken(
+    address,
+    c.env.MAILBOX_TOKEN_SECRET,
+    Date.now(),
+    getPermanentMailboxTokenTtlSeconds(),
+  );
+  return c.json({ success: true, address, mailboxToken, permanent: true });
+});
+
 api.post('/mailbox-token/refresh', async (c) => {
   if (!c.env.MAILBOX_TOKEN_SECRET) {
     return c.json({ code: 'SEND_UNAVAILABLE', message: 'Email sending is unavailable' }, 503);
@@ -219,12 +410,18 @@ api.post('/mailbox-token/refresh', async (c) => {
     return c.json({ code: 'SEND_UNAUTHORIZED', message: 'Mailbox authorization is invalid or expired' }, 401);
   }
 
+  const db = getD1DB(c.env.DB);
+  const mailboxRecord = await findMailboxByAddress(db, mailbox);
+  const ttlSeconds = mailboxRecord?.isPermanent
+    ? getPermanentMailboxTokenTtlSeconds()
+    : getMailboxTokenTtlSeconds();
+
   return c.json({
     mailboxToken: await createMailboxToken(
       mailbox,
       c.env.MAILBOX_TOKEN_SECRET,
       Date.now(),
-      getMailboxTokenTtlSeconds(),
+      ttlSeconds,
     ),
   });
 });
@@ -402,6 +599,10 @@ api.post('/emails', async (c) => {
   if (!address) {
     return c.json({ message: 'address is required' }, 400);
   }
+  const authorization = await authorizeMailboxAccess(c, address as string, body?.token);
+  if (!authorization.allowed) {
+    return authorization.response;
+  }
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
   const emails = await getEmailsByMessageTo(db, address as string, safeLimit);
   return c.json(emails);
@@ -421,6 +622,11 @@ api.post('/emails/meta', async (c) => {
     return c.json({ message: 'address is required' }, 400);
   }
 
+  const authorization = await authorizeMailboxAccess(c, address as string, body?.token);
+  if (!authorization.allowed) {
+    return authorization.response;
+  }
+
   const meta = await getMailboxMetaByAddress(db, address as string);
   return c.json(meta);
 });
@@ -435,6 +641,10 @@ api.get('/emails/:id', async (c) => {
   if (!email) {
     return c.json({ message: 'Email not found'}, 404);
   }
+  const authorization = await authorizeMailboxAccess(c, email.messageTo);
+  if (!authorization.allowed) {
+    return authorization.response;
+  }
   return c.json(email);
 });
 
@@ -445,6 +655,16 @@ api.post('/delete-emails', async (c) => {
     const ids = body?.ids;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
         return c.json({ message: 'ids are required' }, 400);
+    }
+    if (body?.address) {
+      const authorization = await authorizeMailboxAccess(c, body.address, body?.token);
+      if (!authorization.allowed) {
+        return authorization.response;
+      }
+      const mailboxEmails = await Promise.all(ids.map((id: string) => findEmailById(db, id)));
+      if (mailboxEmails.some((email) => !email || normalizeMailboxAddress(email.messageTo) !== normalizeMailboxAddress(body.address))) {
+        return c.json({ code: 'MAILBOX_UNAUTHORIZED', message: '不能删除其他邮箱的邮件' }, 403);
+      }
     }
     const result = await deleteEmails(db, ids as string[]);
     return c.json(result);

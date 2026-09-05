@@ -27,6 +27,10 @@ export const mailboxes = sqliteTable("mailboxes", {
   domain: text("domain").notNull(),               // 邮箱域名
   expiresAt: integer("expires_at", { mode: "timestamp" }),
   apiKeyId: text("api_key_id").notNull(),         // 关联的 API Key ID
+  isPermanent: integer("is_permanent", { mode: "boolean" }).default(false).notNull(),
+  passwordHash: text("password_hash"),
+  passwordSalt: text("password_salt"),
+  verifiedAt: integer("verified_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
