@@ -20,7 +20,7 @@
   "Reply-To:": "回复：",
   "About": "关于",
   "Privacy": "隐私",
-  "INBOX": "INBOX",
+  "INBOX": "收件箱",
   "Waiting for emails...": "准备接收邮件...",
   "Vmail sender is beta now. ": "Vmail 发信公测中，",
   "Try it": "试试匿名发件",
@@ -133,5 +133,11 @@
   "Addresses Created": "累计创建邮址",
   "Emails Received": "累计接收邮件",
   "API Keys Created": "累计创建 API Key",
-  "API Calls": "累计 API 调用"
+  "API Calls": "累计 API 调用",
+  "Refresh": "刷新",
+  "Site locked": "站点已锁定",
+  "Enter site password to continue": "请输入站点密码继续",
+  "Password": "密码",
+  "Unlocking...": "解锁中...",
+  "Unlock": "解锁"
 }
