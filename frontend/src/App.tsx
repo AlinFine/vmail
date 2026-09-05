@@ -57,17 +57,20 @@ function App() {
       await unlockSite(password);
       setIsUnlocked(true);
     } catch (err: any) {
-      setUnlockError(err?.message || "Invalid password");
+      setUnlockError(
+        err?.message === "Invalid password"
+          ? "密码无效"
+          : err?.message || "密码无效",
+      );
     } finally {
       setIsUnlocking(false);
     }
   };
 
-  // 在配置加载完成前，显示加载中状态
   if (!config) {
     return (
       <div className="bg-[#1f2023] text-white w-screen h-screen flex items-center justify-center">
-        Loading...
+        加载中...
       </div>
     );
   }
