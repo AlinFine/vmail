@@ -73,6 +73,7 @@ jobs:
           sed -i "s#\${COOKIES_SECRET}#${COOKIES_SECRET}#g" wrangler.toml
           sed -i "s#\${TURNSTILE_KEY}#${TURNSTILE_KEY}#g" wrangler.toml
           sed -i "s#\${TURNSTILE_SECRET}#${TURNSTILE_SECRET}#g" wrangler.toml
+          [ -n "${MAILBOX_TOKEN_SECRET}" ] || { echo "MAILBOX_TOKEN_SECRET is required"; exit 1; }
           if [ -n "${SEND_CHANNEL}" ]; then
             case "${SEND_CHANNEL}" in
               resend)
@@ -89,7 +90,6 @@ jobs:
               *) echo "Unsupported SEND_CHANNEL: ${SEND_CHANNEL}"; exit 1 ;;
             esac
             [ -n "${SENDER_EMAIL}" ] || { echo "SENDER_EMAIL is required"; exit 1; }
-            [ -n "${MAILBOX_TOKEN_SECRET}" ] || { echo "MAILBOX_TOKEN_SECRET is required"; exit 1; }
             sed -i "s#\${SEND_CHANNEL}#${SEND_CHANNEL}#g" wrangler.toml
             sed -i "s#\${SENDER_EMAIL}#${SENDER_EMAIL}#g" wrangler.toml
           else
@@ -163,10 +163,10 @@ jobs:
 
       - name: Configure sender secrets
         run: |
+          printf '%s' "${MAILBOX_TOKEN_SECRET}" | pnpm exec wrangler secret put MAILBOX_TOKEN_SECRET
           if [ -z "${SEND_CHANNEL}" ]; then
             exit 0
           fi
-          printf '%s' "${MAILBOX_TOKEN_SECRET}" | pnpm exec wrangler secret put MAILBOX_TOKEN_SECRET
           if [ -n "${RESEND_API_KEY}" ]; then
             printf '%s' "${RESEND_API_KEY}" | pnpm exec wrangler secret put RESEND_API_KEY
           fi
