@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { formatDistanceToNow, type Locale } from "date-fns";
-import { zhCN, enUS, fr, ja, de, ko, zhTW, it, pt, tr, ru } from "date-fns/locale";
+import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import clsx from "clsx";
 // refactor: 将导入从 'database' 包更改为本地的类型定义文件
 import type { Email } from "../database_types";
@@ -15,23 +15,7 @@ import PasswordIcon from "./icons/Password.tsx"; // feat: 导入密码图标
 import { MailDetail } from "../pages/MailDetail.tsx";
 import ArrowUturnLeft from "./icons/ArrowUturnLeft.tsx";
 import Expand from "./icons/Expand.tsx"; // feat: 导入 Expand 图标
-import { SiteStats } from "./SiteStats.tsx"; // feat: 导入 SiteStats 组件
 import SendIcon from "./icons/SendIcon.tsx";
-
-// 语言到 date-fns locale 的映射
-const localeMap: Record<string, Locale> = {
-  zh: zhCN,
-  "zh-TW": zhTW,
-  en: enUS,
-  fr: fr,
-  ja: ja,
-  de: de,
-  ko: ko,
-  it: it,
-  pt: pt,
-  tr: tr,
-  ru: ru,
-};
 
 interface MailListProps {
   emails: Email[];
@@ -73,10 +57,7 @@ export function MailList({
   canSendEmails,
   onOpenSender,
 }: MailListProps) {
-  const { t, i18n } = useTranslation();
-
-  // 获取当前语言对应的 date-fns locale
-  const currentLocale = localeMap[i18n.language] || enUS;
+  const { t } = useTranslation();
 
   const handleSelect = (id: string) => {
     setSelectedIds((prev) =>
@@ -99,11 +80,14 @@ export function MailList({
       return <MailDetail email={selectedEmail} onClose={onCloseDetail} />;
     }
 
-    // 状态 1: 还未创建地址 - 展示站点统计数据
+    // 未创建地址时只显示下一步提示，避免在核心工作区混入推广信息。
     if (!isAddressCreated) {
       return (
-        <div className="w-full items-center h-full flex-col justify-center flex">
-          <SiteStats />
+        <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-3 text-center">
+          <MailIcon className="h-10 w-10 text-zinc-600" />
+          <p className="text-sm text-zinc-400">
+            {t("Please create a temporary email address first")}
+          </p>
         </div>
       );
     }
@@ -140,7 +124,8 @@ export function MailList({
         />
         <div
           onClick={() => onSelectEmail(email)}
-          className="cursor-pointer flex-1 flex flex-col items-start gap-2 rounded-lg border border-zinc-600 p-3 text-left text-sm transition-all hover:bg-zinc-700">
+          className="cursor-pointer flex-1 flex flex-col items-start gap-2 rounded-lg border border-zinc-600 p-3 text-left text-sm transition-all hover:bg-zinc-700"
+        >
           <div className="flex w-full flex-col gap-1">
             <div className="flex items-center">
               <div className="flex items-center gap-2">
@@ -153,7 +138,7 @@ export function MailList({
               <div className={"ml-auto text-xs"}>
                 {formatDistanceToNow(new Date(email.date || email.createdAt), {
                   addSuffix: true,
-                  locale: currentLocale,
+                  locale: zhCN,
                 })}
               </div>
             </div>
@@ -183,7 +168,8 @@ export function MailList({
           {selectedEmail && (
             <button
               onClick={onCloseDetail}
-              className="flex items-center gap-1 text-sm font-semibold text-cyan-400 hover:text-cyan-300 ml-2">
+              className="flex items-center gap-1 text-sm font-semibold text-cyan-400 hover:text-cyan-300 ml-2"
+            >
               <ArrowUturnLeft />
               {t("Return to email list")}
             </button>
@@ -198,14 +184,16 @@ export function MailList({
               <button
                 onClick={onExpand}
                 className="p-1 rounded text-cyan-400 hover:text-cyan-300"
-                title={t("Expand")}>
+                title={t("Expand")}
+              >
                 <Expand className="w-5 h-5" />
               </button>
               <button
                 onClick={() => onDelete([selectedEmail.id])}
                 disabled={isDeleting}
                 className="p-1 rounded text-red-500 disabled:text-gray-500 hover:text-red-400"
-                title={t("Delete")}>
+                title={t("Delete")}
+              >
                 <TrashIcon className="w-5 h-5" />
               </button>
             </>
@@ -216,7 +204,8 @@ export function MailList({
                 <button
                   className="p-1 rounded text-cyan-400 hover:text-cyan-300"
                   title={t("View password")}
-                  onClick={onShowPassword}>
+                  onClick={onShowPassword}
+                >
                   <PasswordIcon className="w-5 h-5" />
                 </button>
               )}
@@ -224,7 +213,8 @@ export function MailList({
                 <button
                   className="p-1 rounded text-cyan-400 hover:text-cyan-300"
                   title={t("Send email")}
-                  onClick={onOpenSender}>
+                  onClick={onOpenSender}
+                >
                   <SendIcon className="w-5 h-5" />
                 </button>
               )}
@@ -243,17 +233,19 @@ export function MailList({
                     onClick={() => onDelete(selectedIds)}
                     disabled={selectedIds.length === 0 || isDeleting}
                     className="p-1 rounded text-red-500 disabled:text-gray-500 hover:text-red-400"
-                    title="删除选中">
+                    title="删除选中"
+                  >
                     <TrashIcon className="w-5 h-5" />
                   </button>
                 </>
               )}
               <button
                 className="p-1 rounded"
-                title="refresh"
+                title={t("Refresh")}
                 onClick={onRefresh} // feat: 添加手动刷新事件
                 // fix: 只有在创建地址后，刷新按钮才可用, 且在加载中时禁用
-                disabled={!isAddressCreated || isFetching}>
+                disabled={!isAddressCreated || isFetching}
+              >
                 <RefreshIcon
                   className={clsx("size-6", isAddressCreated && "animate-spin")}
                 />
@@ -269,7 +261,8 @@ export function MailList({
         className={clsx(
           "flex flex-col flex-1 overflow-y-auto p-2",
           !selectedEmail && "grids h-[488px]",
-        )}>
+        )}
+      >
         {renderBody()}
       </div>
     </div>
