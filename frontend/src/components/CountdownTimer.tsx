@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'; // fix: 导入 useCallback
-import { useTranslation } from 'react-i18next';
-import ClockIcon from './icons/Clock'; // 导入时钟图标
-import RefreshIcon from './icons/RefreshIcon'; // 导入刷新图标
+import { useState, useEffect, useCallback } from "react"; // fix: 导入 useCallback
+import { useTranslation } from "react-i18next";
+import ClockIcon from "./icons/Clock"; // 导入时钟图标
+import RefreshIcon from "./icons/RefreshIcon"; // 导入刷新图标
 
 // 定义组件的 props 类型
 interface CountdownTimerProps {
@@ -15,7 +15,10 @@ const formatTimeUnit = (unit: number): string => {
 };
 
 // 修改：组件名称和 prop 名称修改
-export function CountdownTimer({ expiryTimestamp, onReset }: CountdownTimerProps) {
+export function CountdownTimer({
+  expiryTimestamp,
+  onReset,
+}: CountdownTimerProps) {
   const { t } = useTranslation(); // 用于国际化
 
   // 计算剩余时间的函数 (使用 useCallback 避免不必要的重新创建)
@@ -23,9 +26,9 @@ export function CountdownTimer({ expiryTimestamp, onReset }: CountdownTimerProps
     // 直接使用最新的 expiryTimestamp prop
     const difference = expiryTimestamp - Date.now();
     let timeLeft = {
-      hours: '00',
-      minutes: '00',
-      seconds: '00',
+      hours: "00",
+      minutes: "00",
+      seconds: "00",
       expired: difference <= 0,
     };
 
@@ -75,14 +78,17 @@ export function CountdownTimer({ expiryTimestamp, onReset }: CountdownTimerProps
 
   return (
     // feat: 将容器改为 flex-row 并添加按钮
-    <div className="flex items-center justify-between gap-2 text-sm text-cyan-400 my-4 p-3 bg-white/5 rounded-md border border-cyan-50/20 shadow-inner">
-      <div className="flex items-center gap-2"> {/* 将图标和文本包裹起来 */}
+    <div className="my-4 flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">
+      <div className="flex items-center gap-2">
+        {" "}
+        {/* 将图标和文本包裹起来 */}
         <ClockIcon className="w-5 h-5" />
         {timeLeft.expired ? (
-          <span>{t('Email expired')}</span> // 邮箱已过期提示
+          <span>{t("Email expired")}</span> // 邮箱已过期提示
         ) : (
           <span>
-            {t('Expires in')}: {timeLeft.hours}:{timeLeft.minutes}:{timeLeft.seconds}
+            {t("Expires in")}: {timeLeft.hours}:{timeLeft.minutes}:
+            {timeLeft.seconds}
           </span> // 显示剩余时间 时:分:秒
         )}
       </div>
@@ -90,8 +96,8 @@ export function CountdownTimer({ expiryTimestamp, onReset }: CountdownTimerProps
       {!timeLeft.expired && (
         <button
           onClick={onReset} // 修改：调用 onReset 回调
-          className="p-1 rounded text-cyan-400 hover:text-cyan-300 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-          title={t('Reset validity')} // 修改：更新 tooltip 提示文字
+          className="rounded-md p-1 text-zinc-700 transition hover:bg-zinc-200 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-950/10"
+          title={t("Reset validity")} // 修改：更新 tooltip 提示文字
         >
           <RefreshIcon className="w-5 h-5" /> {/* 使用刷新图标 */}
         </button>

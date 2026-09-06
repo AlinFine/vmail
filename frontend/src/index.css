@@ -3,6 +3,24 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  background: #fafafa;
+  color: #18181b;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: #fafafa;
+}
+
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
+}
+
 /* 自定义滚动条样式，使其不可见 */
 *::-webkit-scrollbar {
   width: 0px;
@@ -19,12 +37,9 @@
 
 /* 网格背景样式 */
 .grids {
-  background-image: linear-gradient(
-      0deg,
-      rgba(122, 122, 122, 0.05) 1px,
-      transparent 0
-    ),
-    linear-gradient(90deg, rgba(122, 122, 122, 0.05) 1px, transparent 0);
+  background-image:
+    linear-gradient(0deg, rgba(24, 24, 27, 0.035) 1px, transparent 0),
+    linear-gradient(90deg, rgba(24, 24, 27, 0.035) 1px, transparent 0);
   background-position: 50%;
   background-size: 24px 24px;
 }
@@ -179,7 +194,7 @@
 
 .side-left {
   position: absolute;
-  background-color: #0891b2;
+  background-color: #3f3f46;
   width: 19px;
   height: 5px;
   transform: skew(0deg, -25deg);
@@ -189,7 +204,7 @@
 
 .side-right {
   position: absolute;
-  background-color: #0b9fc4;
+  background-color: #52525b;
   width: 19px;
   height: 5px;
   transform: skew(0deg, 25deg);
@@ -199,7 +214,7 @@
 
 .side-top {
   position: absolute;
-  background-color: #19b6dd;
+  background-color: #18181b;
   width: 20px;
   height: 20px;
   rotate: 45deg;

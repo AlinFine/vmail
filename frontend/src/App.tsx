@@ -70,7 +70,7 @@ function App() {
 
   if (!config) {
     return (
-      <div className="bg-[#1f2023] text-white w-screen h-screen flex items-center justify-center">
+      <div className="flex h-screen w-screen items-center justify-center bg-zinc-50 text-sm text-zinc-600">
         加载中...
       </div>
     );

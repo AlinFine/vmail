@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SiteUnlockProps {
   onUnlock: (password: string) => Promise<void>;
@@ -9,7 +9,7 @@ interface SiteUnlockProps {
 
 export function SiteUnlock({ onUnlock, isUnlocking, error }: SiteUnlockProps) {
   const { t } = useTranslation();
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,21 +20,22 @@ export function SiteUnlock({ onUnlock, isUnlocking, error }: SiteUnlockProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#1f2023] flex items-center justify-center px-6">
+    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-xl border border-cyan-100/20 bg-neutral-800 p-6 text-white">
-        <h1 className="text-xl font-semibold mb-3">{t('Site locked')}</h1>
-        <p className="text-sm text-zinc-300 mb-5">
-          {t('Enter site password to continue')}
+        className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-6 text-zinc-950 shadow-sm"
+      >
+        <h1 className="mb-3 text-xl font-semibold">{t("Site locked")}</h1>
+        <p className="mb-5 text-sm text-zinc-500">
+          {t("Enter site password to continue")}
         </p>
 
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder={t('Password')}
-          className="w-full rounded-md bg-white/10 border border-cyan-100/20 px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-cyan-500"
+          placeholder={t("Password")}
+          className="mb-4 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
         />
 
         {error && <p className="text-sm text-rose-400 mb-3">{error}</p>}
@@ -42,8 +43,9 @@ export function SiteUnlock({ onUnlock, isUnlocking, error }: SiteUnlockProps) {
         <button
           type="submit"
           disabled={isUnlocking || !password.trim()}
-          className="w-full rounded-md bg-cyan-600 py-2.5 font-medium hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed">
-          {isUnlocking ? t('Unlocking...') : t('Unlock')}
+          className="w-full rounded-md bg-zinc-950 py-2.5 font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isUnlocking ? t("Unlocking...") : t("Unlock")}
         </button>
       </form>
     </div>

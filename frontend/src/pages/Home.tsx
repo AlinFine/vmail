@@ -63,7 +63,8 @@ export function Home() {
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [permanentPassword, setPermanentPassword] = useState("");
   const [isCreatingPermanent, setIsCreatingPermanent] = useState(false);
-  const [isSettingPermanentPassword, setIsSettingPermanentPassword] = useState(false);
+  const [isSettingPermanentPassword, setIsSettingPermanentPassword] =
+    useState(false);
 
   const { SenderModal, setShowSenderModal } = useSenderModal(
     address || "",
@@ -83,7 +84,9 @@ export function Home() {
     queryFn: () => getEmails(address!, 50, mailboxToken || undefined),
     enabled: !!address, // 只有在 address 存在时才执行查询
     refetchInterval: (query) =>
-      !query.state.error && document.visibilityState === "visible" ? 5000 : false,
+      !query.state.error && document.visibilityState === "visible"
+        ? 5000
+        : false,
     retry: false, // 失败后不自动重试
   });
 
@@ -102,7 +105,9 @@ export function Home() {
     queryFn: () => getMailboxMeta(address!, mailboxToken || undefined),
     enabled: !!address,
     refetchInterval: (query) =>
-      !query.state.error && document.visibilityState === "visible" ? 5000 : false,
+      !query.state.error && document.visibilityState === "visible"
+        ? 5000
+        : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: false,
@@ -233,9 +238,16 @@ export function Home() {
       let activeToken = mailboxToken || undefined;
       let result;
       try {
-        result = await setPermanentMailboxPassword(address, permanentPassword, activeToken);
+        result = await setPermanentMailboxPassword(
+          address,
+          permanentPassword,
+          activeToken,
+        );
       } catch (error) {
-        if (!(error instanceof MailboxApiError) || ![401, 404].includes(error.status)) {
+        if (
+          !(error instanceof MailboxApiError) ||
+          ![401, 404].includes(error.status)
+        ) {
           throw error;
         }
 
@@ -244,7 +256,11 @@ export function Home() {
         // once so affected mailboxes recover without manual data repair.
         const login = await loginPermanentMailbox(address, permanentPassword);
         activeToken = login.mailboxToken;
-        result = await setPermanentMailboxPassword(address, permanentPassword, activeToken);
+        result = await setPermanentMailboxPassword(
+          address,
+          permanentPassword,
+          activeToken,
+        );
       }
       if (result.mailboxToken) {
         Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
@@ -312,7 +328,8 @@ export function Home() {
 
   // 删除邮件的 useMutation hook
   const deleteMutation = useMutation({
-    mutationFn: (ids: string[]) => deleteEmails(ids, address, mailboxToken || undefined),
+    mutationFn: (ids: string[]) =>
+      deleteEmails(ids, address, mailboxToken || undefined),
     onSuccess: () => {
       toast.success(t("Emails deleted successfully")); // feat: 使用全局 toast 提示
       setSelectedIds([]); // 清空选择
@@ -351,7 +368,7 @@ export function Home() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-2rem)] w-full px-4 py-5 text-white md:px-8 md:py-8">
+    <main className="min-h-screen w-full bg-zinc-50 px-4 py-5 text-zinc-950 md:px-8 md:py-8">
       <SenderModal />
       {selectedEmail && (
         <InfoModal
@@ -365,52 +382,63 @@ export function Home() {
           />
         </InfoModal>
       )}
-      <div className="mx-auto grid w-full max-w-7xl gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-white/10 bg-zinc-900/80 p-4 shadow-xl md:p-5">
+      <div className="mx-auto grid w-full max-w-[1400px] gap-4 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)]">
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm md:p-5">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-white">{isPermanentMailbox ? "固定邮箱" : "临时邮箱"}</h1>
-              <p className="mt-1 text-sm text-zinc-400">
+              <h1 className="text-xl font-semibold text-zinc-950">
+                {isPermanentMailbox ? "固定邮箱" : "临时邮箱"}
+              </h1>
+              <p className="mt-1 text-sm text-zinc-500">
                 {address ? "当前收件地址" : "创建一个收件地址"}
               </p>
             </div>
-            <span className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+            <span
+              className={`mt-1 h-2.5 w-2.5 rounded-full ${address ? "bg-emerald-500" : "bg-zinc-300"}`}
+              title={address ? "邮箱已启用" : "尚未创建邮箱"}
+            />
           </div>
 
           {address ? (
             <div className="space-y-4">
               <div>
-                <div className="mb-2 text-sm font-medium text-zinc-300">
+                <div className="mb-2 text-sm font-medium text-zinc-700">
                   {t("Email address")}
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-3">
-                  <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">
+                <div className="flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-950">
                     {address}
                   </span>
                   <CopyButton
                     text={address}
-                    className="shrink-0 rounded-md p-1"
+                    className="shrink-0 rounded-md p-1.5 transition hover:bg-zinc-200"
                   />
                 </div>
               </div>
               {isPermanentMailbox && (
-                <div className="space-y-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
+                <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
                   <div>
-                    <div className="text-sm font-medium text-amber-100">设置或修改邮箱密码</div>
-                    <p className="mt-1 text-xs text-zinc-400">密码立即生效，无需等待接收邮件。</p>
+                    <div className="text-sm font-medium text-zinc-900">
+                      设置或修改邮箱密码
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      密码立即生效，无需等待接收邮件。
+                    </p>
                   </div>
                   <input
                     type="password"
                     value={permanentPassword}
-                    onChange={(event) => setPermanentPassword(event.target.value)}
+                    onChange={(event) =>
+                      setPermanentPassword(event.target.value)
+                    }
                     placeholder="设置自定义密码（至少 8 位）"
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
                   />
                   <button
                     type="button"
                     onClick={handleSetPermanentPassword}
                     disabled={isSettingPermanentPassword}
-                    className="w-full rounded-lg bg-amber-300 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-200 disabled:opacity-60"
+                    className="w-full rounded-md bg-zinc-950 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isSettingPermanentPassword ? "正在设置..." : "保存密码"}
                   </button>
@@ -425,51 +453,65 @@ export function Home() {
               <button
                 type="button"
                 onClick={handleStopAddress}
-                className="w-full rounded-lg border border-rose-400/30 bg-rose-400/10 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20"
+                className="w-full rounded-md border border-zinc-300 bg-white py-2.5 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-50"
               >
                 {t("Stop")}
               </button>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-1">
                 <button
                   type="button"
                   onClick={() => setMailboxMode("temporary")}
-                  className={`rounded-md px-3 py-2 text-sm transition ${mailboxMode === "temporary" ? "bg-cyan-500 text-zinc-950" : "text-zinc-300 hover:bg-white/10"}`}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${mailboxMode === "temporary" ? "bg-zinc-950 text-white shadow-sm" : "text-zinc-600 hover:bg-white hover:text-zinc-950"}`}
                 >
                   临时邮箱
                 </button>
                 <button
                   type="button"
                   onClick={() => setMailboxMode("permanent")}
-                  className={`rounded-md px-3 py-2 text-sm transition ${mailboxMode === "permanent" ? "bg-cyan-500 text-zinc-950" : "text-zinc-300 hover:bg-white/10"}`}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${mailboxMode === "permanent" ? "bg-zinc-950 text-white shadow-sm" : "text-zinc-600 hover:bg-white hover:text-zinc-950"}`}
                 >
                   固定邮箱
                 </button>
               </div>
               {mailboxMode === "permanent" && (
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">邮箱名称</label>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    邮箱名称
+                  </label>
                   <div className="flex items-center gap-2">
                     <input
                       value={permanentLocalPart}
-                      onChange={(event) => setPermanentLocalPart(event.target.value.replace(/[^a-zA-Z0-9._-]/g, "").toLowerCase())}
+                      onChange={(event) =>
+                        setPermanentLocalPart(
+                          event.target.value
+                            .replace(/[^a-zA-Z0-9._-]/g, "")
+                            .toLowerCase(),
+                        )
+                      }
                       placeholder="例如：mycode"
                       maxLength={64}
-                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                      className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
                     />
-                    <span className="text-sm text-zinc-400">@{selectedDomain}</span>
+                    <span className="max-w-[45%] truncate text-sm text-zinc-500">
+                      @{selectedDomain}
+                    </span>
                   </div>
                 </div>
               )}
               <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-300">
+                <label className="mb-2 block text-sm font-medium text-zinc-700">
                   设置密码（必填）
                 </label>
                 <input
                   type="password"
-                  value={mailboxMode === "permanent" ? permanentPassword : temporaryPassword}
+                  value={
+                    mailboxMode === "permanent"
+                      ? permanentPassword
+                      : temporaryPassword
+                  }
                   onChange={(event) =>
                     mailboxMode === "permanent"
                       ? setPermanentPassword(event.target.value)
@@ -479,23 +521,23 @@ export function Home() {
                   required
                   minLength={8}
                   maxLength={128}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-300">
+                <label className="mb-2 block text-sm font-medium text-zinc-700">
                   {t("Domain")}
                 </label>
                 <select
                   value={selectedDomain}
                   onChange={(e) => setSelectedDomain(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20"
+                  className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-950 outline-none transition focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
                 >
                   {config.emailDomain.map((domain) => (
                     <option
                       key={domain}
                       value={domain}
-                      className="bg-zinc-900 text-white"
+                      className="bg-white text-zinc-950"
                     >
                       @{domain}
                     </option>
@@ -504,27 +546,31 @@ export function Home() {
               </div>
               {config.turnstileEnabled && (
                 <div>
-                  <div className="mb-2 text-sm font-medium text-zinc-300">
+                  <div className="mb-2 text-sm font-medium text-zinc-700">
                     {t("Validater")}
                   </div>
-                  <div className="h-[65px] max-w-full overflow-hidden rounded-lg bg-zinc-800 [&_iframe]:!w-full">
+                  <div className="h-[65px] max-w-full overflow-hidden rounded-md border border-zinc-200 bg-white [&_iframe]:!w-full">
                     <Turnstile
-                      className="w-full border border-white/10"
+                      className="w-full"
                       siteKey={config.turnstileKey}
                       onSuccess={setTurnstileToken}
-                      options={{ theme: "dark", size: "flexible" }}
+                      options={{ theme: "light", size: "flexible" }}
                     />
                   </div>
                 </div>
               )}
               <button
                 type="button"
-                onClick={mailboxMode === "permanent" ? handleCreatePermanentAddress : handleCreateAddress}
+                onClick={
+                  mailboxMode === "permanent"
+                    ? handleCreatePermanentAddress
+                    : handleCreateAddress
+                }
                 disabled={
                   (config.turnstileEnabled && !turnstileToken) ||
                   isCreatingPermanent
                 }
-                className="w-full rounded-lg bg-cyan-500 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+                className="w-full rounded-md bg-zinc-950 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400"
               >
                 {mailboxMode === "permanent"
                   ? isCreatingPermanent
@@ -534,7 +580,7 @@ export function Home() {
               </button>
               <Link
                 to="/mailbox-login"
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 py-2.5 text-sm text-cyan-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-300 bg-white py-2.5 text-sm font-medium text-zinc-900 transition hover:border-zinc-950 hover:bg-zinc-50"
               >
                 <PasswordIcon className="h-4 w-4" />
                 固定邮箱登录
@@ -564,7 +610,10 @@ export function Home() {
             canSendEmails={canSendEmails}
             onOpenSender={() => setShowSenderModal(true)} // 打开发件弹窗
             errorMessage={emailsError?.message}
-            requiresLogin={emailsError instanceof MailboxApiError && emailsError.status === 401}
+            requiresLogin={
+              emailsError instanceof MailboxApiError &&
+              emailsError.status === 401
+            }
           />
         </section>
       </div>

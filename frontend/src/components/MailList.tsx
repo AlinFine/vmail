@@ -84,8 +84,8 @@ export function MailList({
     if (!isAddressCreated) {
       return (
         <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-3 text-center">
-          <MailIcon className="h-10 w-10 text-zinc-600" />
-          <p className="text-sm text-zinc-400">
+          <MailIcon className="h-10 w-10 text-zinc-300" />
+          <p className="text-sm text-zinc-500">
             {t("Please create a temporary email address first")}
           </p>
         </div>
@@ -95,12 +95,12 @@ export function MailList({
     if (errorMessage) {
       return (
         <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-3 px-6 text-center">
-          <MailIcon className="h-10 w-10 text-rose-400" />
-          <p className="text-sm text-rose-200">{errorMessage}</p>
+          <MailIcon className="h-10 w-10 text-rose-500" />
+          <p className="text-sm text-rose-600">{errorMessage}</p>
           {requiresLogin && (
             <Link
               to="/mailbox-login"
-              className="rounded-md bg-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400"
+              className="rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800"
             >
               重新登录邮箱
             </Link>
@@ -114,7 +114,9 @@ export function MailList({
       return (
         <div className="w-full items-center h-full flex-col justify-center flex">
           <Loader />
-          <p className="text-zinc-400 mt-6">{t("Waiting for emails...")}</p>
+          <p className="mt-6 text-sm text-zinc-500">
+            {t("Waiting for emails...")}
+          </p>
         </div>
       );
     }
@@ -125,43 +127,47 @@ export function MailList({
         <div className="w-full items-center h-full flex-col justify-center flex">
           {/* 修复: 只要地址已创建且邮箱为空，就持续显示加载动画 */}
           <Loader />
-          <p className="text-zinc-400 mt-6">{t("Waiting for emails...")}</p>
+          <p className="mt-6 text-sm text-zinc-500">
+            {t("Waiting for emails...")}
+          </p>
         </div>
       );
     }
 
     // 状态 4: 显示邮件列表
     return emails.map((email: Email) => (
-      <div key={email.id} className="flex items-center gap-2 mb-1">
+      <div key={email.id} className="mb-2 flex items-center gap-2">
         <input
           type="checkbox"
-          className="h-4 w-4 rounded border-neutral-300 bg-neutral-100 data-[state=checked]:border-neutral-900 data-[state=checked]:bg-neutral-600 data-[state=checked]:text-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:data-[state=checked]:border-neutral-300 dark:data-[state=checked]:bg-neutral-300"
+          className="h-4 w-4 shrink-0 accent-zinc-950"
           checked={selectedIds.includes(email.id)}
           onChange={() => handleSelect(email.id)}
         />
         <div
           onClick={() => onSelectEmail(email)}
-          className="cursor-pointer flex-1 flex flex-col items-start gap-2 rounded-lg border border-zinc-600 p-3 text-left text-sm transition-all hover:bg-zinc-700"
+          className="flex min-w-0 flex-1 cursor-pointer flex-col items-start gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm transition hover:border-zinc-300 hover:bg-zinc-50"
         >
           <div className="flex w-full flex-col gap-1">
-            <div className="flex items-center">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
                 {/* feat: 在用户名后显示邮箱地址 */}
-                <div className="font-semibold">
+                <div className="truncate font-semibold text-zinc-900">
                   {email.from?.name || email.messageFrom}{" "}
                   {email.from?.address && `(${email.from.address})`}
                 </div>
               </div>
-              <div className={"ml-auto text-xs"}>
+              <div className="shrink-0 whitespace-nowrap text-xs text-zinc-500">
                 {formatDistanceToNow(new Date(email.date || email.createdAt), {
                   addSuffix: true,
                   locale: zhCN,
                 })}
               </div>
             </div>
-            <div className="text-xs font-medium">{email.subject}</div>
+            <div className="truncate text-xs font-medium text-zinc-700">
+              {email.subject}
+            </div>
           </div>
-          <div className="line-clamp-2 text-xs text-zinc-300 font-normal w-full">
+          <div className="line-clamp-2 w-full text-xs font-normal text-zinc-500">
             {(email.text || email.html || "").substring(0, 300)}
           </div>
         </div>
@@ -170,14 +176,14 @@ export function MailList({
   };
 
   return (
-    <div className="rounded-md border border-cyan-50/20 text-white">
+    <div className="flex min-h-[32rem] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white text-zinc-950 shadow-sm lg:h-[calc(100vh-4rem)] lg:max-h-[44rem]">
       {/* 邮件列表头部 */}
-      <div className="w-full rounded-t-md p-2 flex items-center bg-zinc-800 text-zinc-200 gap-2">
-        <div className="flex items-center justify-start gap-2 font-bold">
-          <MailIcon className="size-6" />
+      <div className="flex h-12 w-full shrink-0 items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 text-zinc-900">
+        <div className="flex min-w-0 items-center justify-start gap-2 font-semibold">
+          <MailIcon className="size-5" />
           {t("INBOX")}
           {isAddressCreated && emails.length > 0 && !selectedEmail && (
-            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-zinc-600 rounded-full">
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-200 px-1 text-xs font-semibold text-zinc-700">
               {emails.length}
             </span>
           )}
@@ -185,7 +191,7 @@ export function MailList({
           {selectedEmail && (
             <button
               onClick={onCloseDetail}
-              className="flex items-center gap-1 text-sm font-semibold text-cyan-400 hover:text-cyan-300 ml-2"
+              className="ml-1 flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm font-medium text-zinc-700 transition hover:bg-zinc-200 hover:text-zinc-950"
             >
               <ArrowUturnLeft />
               {t("Return to email list")}
@@ -200,7 +206,7 @@ export function MailList({
             <>
               <button
                 onClick={onExpand}
-                className="p-1 rounded text-cyan-400 hover:text-cyan-300"
+                className="rounded-md p-1.5 text-zinc-700 transition hover:bg-zinc-200 hover:text-zinc-950"
                 title={t("Expand")}
               >
                 <Expand className="w-5 h-5" />
@@ -208,7 +214,7 @@ export function MailList({
               <button
                 onClick={() => onDelete([selectedEmail.id])}
                 disabled={isDeleting}
-                className="p-1 rounded text-red-500 disabled:text-gray-500 hover:text-red-400"
+                className="rounded-md p-1.5 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-zinc-300"
                 title={t("Delete")}
               >
                 <TrashIcon className="w-5 h-5" />
@@ -219,7 +225,7 @@ export function MailList({
               {/* 列表页模式下的操作按钮 */}
               {canSendEmails && (
                 <button
-                  className="p-1 rounded text-cyan-400 hover:text-cyan-300"
+                  className="rounded-md p-1.5 text-zinc-700 transition hover:bg-zinc-200 hover:text-zinc-950"
                   title={t("Send email")}
                   onClick={onOpenSender}
                 >
@@ -230,7 +236,7 @@ export function MailList({
                 <>
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded bg-zinc-700 border-zinc-600 text-cyan-600 focus:ring-cyan-500"
+                    className="h-4 w-4 accent-zinc-950"
                     title="全选"
                     checked={
                       selectedIds.length === emails.length && emails.length > 0
@@ -240,7 +246,7 @@ export function MailList({
                   <button
                     onClick={() => onDelete(selectedIds)}
                     disabled={selectedIds.length === 0 || isDeleting}
-                    className="p-1 rounded text-red-500 disabled:text-gray-500 hover:text-red-400"
+                    className="rounded-md p-1.5 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-zinc-300"
                     title="删除选中"
                   >
                     <TrashIcon className="w-5 h-5" />
@@ -248,14 +254,14 @@ export function MailList({
                 </>
               )}
               <button
-                className="p-1 rounded"
+                className="rounded-md p-1.5 text-zinc-700 transition hover:bg-zinc-200 hover:text-zinc-950 disabled:cursor-not-allowed disabled:text-zinc-300 disabled:hover:bg-transparent"
                 title={t("Refresh")}
                 onClick={onRefresh} // feat: 添加手动刷新事件
                 // fix: 只有在创建地址后，刷新按钮才可用, 且在加载中时禁用
                 disabled={!isAddressCreated || isFetching}
               >
                 <RefreshIcon
-                  className={clsx("size-6", isAddressCreated && "animate-spin")}
+                  className={clsx("size-5", isFetching && "animate-spin")}
                 />
               </button>
             </>
@@ -267,8 +273,8 @@ export function MailList({
       {/* fix: 当显示详情时，移除 grids 背景和 h-[488px] 的高度限制 */}
       <div
         className={clsx(
-          "flex flex-col flex-1 overflow-y-auto p-2",
-          !selectedEmail && "grids h-[488px]",
+          "flex min-h-0 flex-1 flex-col overflow-y-auto p-3",
+          !selectedEmail && "grids",
         )}
       >
         {renderBody()}

@@ -67,23 +67,10 @@ export default function SenderModal({
 
       form.reset();
       setShowSenderModal(false);
-      toast.success(t("Message sent"), {
-        style: {
-          borderRadius: "8px",
-          background: "#383838",
-          color: "#ffffff",
-        },
-      });
+      toast.success(t("Message sent"));
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t("Failed to send email"),
-        {
-          style: {
-            borderRadius: "8px",
-            background: "#383838",
-            color: "#ffffff",
-          },
-        },
       );
     } finally {
       setIsSending(false);
@@ -92,21 +79,20 @@ export default function SenderModal({
 
   return (
     <Modal showModal={showSenderModal} setShowModal={setShowSenderModal}>
-      <div className="w-full overflow-hidden bg-white/95 backdrop-blur-xl shadow-xl p-4 md:max-w-3xl md:rounded-2xl md:border md:border-gray-200">
+      <div className="w-full overflow-hidden bg-white p-4 text-zinc-950 shadow-xl md:max-w-3xl md:rounded-lg md:border md:border-zinc-200">
         <Close
-          className="absolute top-4 right-4 h-6 w-6 text-gray-500 hover:text-gray-700 cursor-pointer"
+          className="absolute right-8 top-5 h-6 w-6 cursor-pointer text-zinc-500 transition hover:text-zinc-950 md:right-4"
           onClick={() => setShowSenderModal(false)}
         />
 
-        <div className="flex flex-col items-center justify-center space-y-3 border-b border-gray-200 px-4 py-5 text-center md:px-16">
-          <h3 className="font-display text-2xl font-bold">发送邮件</h3>
-          <p className="text-gray-500">{t("Forward only, no storage")}</p>
+        <div className="border-b border-zinc-200 px-4 py-4">
+          <h3 className="font-display text-lg font-semibold">发送邮件</h3>
         </div>
         <form
           onSubmit={handleSubmit}
-          className="flex flex-col mt-4 space-y-4 px-4"
+          className="mt-4 flex flex-col space-y-4 px-4"
         >
-          <div className="w-full flex flex-col gap-4 md:flex-row">
+          <div className="flex w-full flex-col gap-4 md:flex-row">
             <input
               value={config.senderEmail}
               type="email"
@@ -115,37 +101,37 @@ export default function SenderModal({
               required
               readOnly
               title={`${t("Reply-To:")} ${senderEmail}`}
-              className="rounded-md border border-slate-200 px-3 py-2 shadow-inner w-full bg-gray-100 cursor-not-allowed"
+              className="w-full cursor-not-allowed rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-zinc-500 outline-none"
             />
             <input
               type="text"
               name="senderName"
               placeholder={t("Sending name")}
-              className="rounded-md border border-slate-200 px-3 py-2 shadow-inner w-full"
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
             />
           </div>
 
-          <div className="w-full flex flex-col gap-4 md:flex-row">
+          <div className="flex w-full flex-col gap-4 md:flex-row">
             <input
               type="email"
               name="receiverEmail"
               placeholder={t("Recipient email *")}
               required
-              className="rounded-md border border-slate-200 px-3 py-2 shadow-inner w-full"
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
             />
             <input
               type="text"
               name="subject"
               placeholder={t("Email subject *")}
               required
-              className="rounded-md border border-slate-200 px-3 py-2 shadow-inner w-full"
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
             />
           </div>
 
           <div className="w-full">
             <select
               name="type"
-              className="rounded-md border border-slate-200 px-3 py-2 shadow-inner w-full"
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 outline-none transition focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
             >
               <option value="text/plain">纯文本</option>
               <option value="text/html">HTML</option>
@@ -156,7 +142,7 @@ export default function SenderModal({
               name="content"
               placeholder={t("Email content *")}
               required
-              className="min-h-24 p-2 border border-slate-200 shadow-inner rounded-md w-full"
+              className="min-h-32 w-full resize-y rounded-md border border-zinc-300 bg-white p-3 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
             ></textarea>
           </div>
 
@@ -164,23 +150,16 @@ export default function SenderModal({
             <button
               type="submit"
               disabled={isSending}
-              className="py-2.5 text-white rounded-md w-full bg-cyan-600 hover:opacity-90 disabled:cursor-not-allowed disabled:bg-zinc-500"
+              className="w-full rounded-md bg-zinc-950 py-2.5 font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
             >
               {isSending ? t("Sending...") : t("Send")}
             </button>
           )}
           {!hasSender && (
-            <p className="py-2.5 text-center text-sm text-gray-400 rounded-md w-full border border-dashed border-gray-300">
+            <p className="w-full rounded-md border border-dashed border-zinc-300 py-2.5 text-center text-sm text-zinc-500">
               {t("No sending service configured")}
             </p>
           )}
-          <p className="text-sm text-gray-500 mt-4">
-            🚫
-            {t(
-              "Please do not send illegal content such as politics, pornography, etc",
-            )}
-            .
-          </p>
         </form>
       </div>
     </Modal>
