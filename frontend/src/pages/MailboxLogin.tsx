@@ -22,7 +22,6 @@ export function MailboxLogin() {
       const result = await loginPermanentMailbox(address.trim(), password);
       Cookies.set("userMailbox", result.address);
       Cookies.set("permanentMailbox", result.permanent === false ? "0" : "1");
-      Cookies.remove("permanentPasswordPending");
       if (result.permanent === false && result.expiresAt) {
         const expiresAt = new Date(result.expiresAt).getTime();
         Cookies.set("emailExpiry", expiresAt.toString(), { expires: 1 });

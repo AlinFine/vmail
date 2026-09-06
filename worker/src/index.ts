@@ -168,6 +168,16 @@ function shouldBypassSiteGate(pathname: string): boolean {
   return false;
 }
 
+function withNoStoreHtml(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store, max-age=0');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 // fix: 增强请求体验证逻辑。
 // 此前的实现方式在请求体解析失败时会静默处理，导致后续处理流程因缺少数据而返回一个模糊的400错误。
 // 新的实现方式会严格校验请求体，如果解析为JSON失败（例如请求体为空或格式错误），将立即返回一个明确的400错误，从而阻止无效请求继续执行。
@@ -240,32 +250,33 @@ api.post('/verify', turnstile, async (c) => {
       message: 'Mailbox domain is not configured',
     }, 400);
   }
-  if (password && (password.length < 8 || password.length > 128)) {
+  if (!password) {
+    return c.json({ code: 'PASSWORD_REQUIRED', message: '创建邮箱时必须设置密码' }, 400);
+  }
+  if (password.length < 8 || password.length > 128) {
     return c.json({ code: 'INVALID_PASSWORD', message: '密码长度需为 8-128 位' }, 400);
   }
-  if (password && !tokenSecret) {
+  if (!tokenSecret) {
     return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
   }
   const mailbox = `${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}@${domain}`;
 
   const db = getD1DB(c.env.DB);
-  if (password) {
-    const passwordData = await hashMailboxPassword(password);
-    const now = new Date();
-    await insertMailbox(db, {
-      id: nanoid(),
-      address: mailbox,
-      domain,
-      expiresAt: new Date(Date.now() + getMailboxTokenTtlSeconds() * 1000),
-      apiKeyId: 'web',
-      isPermanent: false,
-      passwordHash: passwordData.hash,
-      passwordSalt: passwordData.salt,
-      verifiedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
+  const passwordData = await hashMailboxPassword(password);
+  const now = new Date();
+  await insertMailbox(db, {
+    id: nanoid(),
+    address: mailbox,
+    domain,
+    expiresAt: new Date(Date.now() + getMailboxTokenTtlSeconds() * 1000),
+    apiKeyId: 'web',
+    isPermanent: false,
+    passwordHash: passwordData.hash,
+    passwordSalt: passwordData.salt,
+    verifiedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
   await incrementAddressesCreated(db);
   await incrementDailyAddressesCreated(db);
 
@@ -303,7 +314,10 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
   if (!domain || !isAllowedMailboxAddress(`mailbox@${domain}`, c.env.EMAIL_DOMAIN)) {
     return c.json({ code: 'INVALID_MAILBOX', message: '邮箱域名未配置' }, 400);
   }
-  if (password && (password.length < 8 || password.length > 128)) {
+  if (!password) {
+    return c.json({ code: 'PASSWORD_REQUIRED', message: '创建固定邮箱时必须设置密码' }, 400);
+  }
+  if (password.length < 8 || password.length > 128) {
     return c.json({ code: 'INVALID_PASSWORD', message: '密码长度需为 8-128 位' }, 400);
   }
 
@@ -322,7 +336,7 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
   }
 
   const now = new Date();
-  const passwordData = password ? await hashMailboxPassword(password) : null;
+  const passwordData = await hashMailboxPassword(password);
   try {
     await insertMailbox(db, {
       id: nanoid(),
@@ -331,9 +345,9 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
       expiresAt: null,
       apiKeyId: 'web',
       isPermanent: true,
-      passwordHash: passwordData?.hash ?? null,
-      passwordSalt: passwordData?.salt ?? null,
-      verifiedAt: passwordData ? now : null,
+      passwordHash: passwordData.hash,
+      passwordSalt: passwordData.salt,
+      verifiedAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -358,7 +372,7 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
     Date.now(),
     getPermanentMailboxTokenTtlSeconds(),
   );
-  return c.json({ success: true, address, needsEmail: !password, hasPassword: Boolean(password), mailboxToken }, 201);
+  return c.json({ success: true, address, permanent: true, hasPassword: true, mailboxToken }, 201);
 });
 
 // Set or change the password for a persistent mailbox.
@@ -782,14 +796,6 @@ api.post('/login', async (c) => {
   try {
     // 解密密码以获取邮箱地址
     const address = decrypt(password, c.env.COOKIES_SECRET);
-    
-    // **核心修复**：移除数据库邮件检查逻辑
-    // 不再需要查询数据库中是否存在该地址的邮件
-    // const emails = await getEmailsByMessageTo(db, address);
-    // if (emails.length === 0) {
-      // 如果该地址从未收到过邮件，则视为无效密码
-      // return c.json({ message: 'Invalid password' }, 404);
-    // }
 
     // 可选：添加一个简单的邮箱地址格式校验，增加健壮性
     // 例如，检查是否包含 '@' 符号
@@ -989,10 +995,12 @@ export default {
     // 这样可以支持直接访问 /api-docs 等前端路由
     if (response.status === 404) {
       const indexRequest = new Request(new URL('/', request.url).toString(), request);
-      return env.ASSETS.fetch(indexRequest);
+      return withNoStoreHtml(await env.ASSETS.fetch(indexRequest));
     }
 
-    return response;
+    return url.pathname === '/' || url.pathname === '/index.html'
+      ? withNoStoreHtml(response)
+      : response;
   },
 
   // 定时任务 (清理过期邮件)

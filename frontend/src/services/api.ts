@@ -59,8 +59,8 @@ export interface MailboxAuthorizationResponse {
 
 export async function verifyTurnstile(
   domain: string,
+  password: string,
   token?: string,
-  password?: string,
 ): Promise<MailboxAuthorizationResponse> {
   const response = await fetch(`${API_BASE_URL}/verify`, {
     method: "POST",
@@ -136,7 +136,6 @@ export interface PermanentMailboxResponse {
   success: boolean;
   address: string;
   mailboxToken?: string;
-  needsEmail?: boolean;
   permanent?: boolean;
   hasPassword?: boolean;
   expiresAt?: string | null;
@@ -145,7 +144,7 @@ export interface PermanentMailboxResponse {
 export async function createPermanentMailbox(
   localPart: string,
   domain: string,
-  password?: string,
+  password: string,
   token?: string,
 ): Promise<PermanentMailboxResponse> {
   const response = await fetch(`${API_BASE_URL}/permanent-mailboxes`, {

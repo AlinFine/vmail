@@ -19,11 +19,9 @@ import {
   setPermanentMailboxPassword,
 } from "../services/api.ts";
 import { useConfig } from "../hooks/useConfig.ts";
-import { encrypt } from "../lib/utlis.ts";
 
 import { usePasswordModal } from "../components/password.tsx";
 import PasswordIcon from "../components/icons/Password.tsx";
-import Close from "../components/icons/Close.tsx";
 
 import type { Email } from "../database_types.ts";
 import { InfoModal } from "../components/InfoModal.tsx";
@@ -41,9 +39,6 @@ export function Home() {
   );
   const [isPermanentMailbox, setIsPermanentMailbox] = useState(
     () => Cookies.get("permanentMailbox") === "1",
-  );
-  const [needsPermanentPassword, setNeedsPermanentPassword] = useState(
-    () => Cookies.get("permanentPasswordPending") === "1",
   );
   const [mailboxToken, setMailboxToken] = useState<string>(
     () => Cookies.get("mailboxToken") || "",
@@ -66,9 +61,6 @@ export function Home() {
   );
   const [permanentLocalPart, setPermanentLocalPart] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
-  const [usesCustomTemporaryPassword, setUsesCustomTemporaryPassword] = useState(
-    () => Cookies.get("customMailboxPassword") === "1",
-  );
   const [permanentPassword, setPermanentPassword] = useState("");
   const [isCreatingPermanent, setIsCreatingPermanent] = useState(false);
   const [isSettingPermanentPassword, setIsSettingPermanentPassword] = useState(false);
@@ -81,8 +73,6 @@ export function Home() {
     mailboxToken,
   );
   const canSendEmails = Boolean(address && mailboxToken && config.sendChannel);
-
-  const [hasReceivedEmail, setHasReceivedEmail] = useState(false);
 
   // 使用 React Query 获取邮件列表
   const {
@@ -138,99 +128,24 @@ export function Home() {
     }
   }, [address, mailboxMeta, queryClient]);
 
-  // feat: 将密码提示封装成一个函数，并用 useCallback 包裹以优化性能。
-  // refactor: 移除自定义的 toast.custom, 使用全局 toast
-  const showPasswordToast = useCallback(
-    (password: string) => {
-      toast(
-        (toastInstance) => (
-          // 优化：为弹窗添加独立的标题栏和关闭按钮，并调整整体样式
-          <div className="w-full max-w-lg p-4 bg-slate-800 text-white rounded-lg shadow-lg border border-slate-700">
-            {/* 标题栏：包含图标、标题和关闭按钮 */}
-            <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-700">
-              <div className="flex items-center gap-2">
-                <PasswordIcon className="h-6 w-6 text-cyan-400" />
-                <h3 className="text-lg font-semibold">{t("View password")}</h3>
-              </div>
-              <button
-                onClick={() => toast.dismiss(toastInstance.id)}
-                className="p-1 rounded-full text-gray-400 hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                aria-label="Close"
-              >
-                <Close className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* 内容区域 */}
-            <div>
-              <p className="text-sm text-gray-300">
-                {t("Save your password and continue using this email in 1 day")}
-              </p>
-              <div className="mt-2 flex items-center text-sm bg-slate-700 px-2 py-1 rounded">
-                <span className="flex-1 font-mono break-all text-gray-100">
-                  {password}
-                </span>
-                <CopyButton text={password} className="p-1" />
-              </div>
-              <p className="mt-3 text-xs text-yellow-400">
-                {t(
-                  "Remember your password, otherwise your email will expire and cannot be retrieved",
-                )}
-              </p>
-            </div>
-          </div>
-        ),
-        {
-          id: "password-notification", // 防止重复通知
-          duration: 5000, // 5秒后自动关闭
-          position: "top-center",
-          // 优化：移除默认样式，让自定义组件完全控制外观
-          style: {
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            boxShadow: "none",
-          },
-        },
-      );
-    },
-    [t],
-  );
-
-  // feat(fix): 使用useEffect来检测新邮件、显示密码通知，并控制”查看密码”按钮的可见性
-  const prevEmailsLength = useRef(emails.length);
+  // Keep the expiry display in sync with the active mailbox cookie.
   useEffect(() => {
-    // 修复：只要邮件列表不为空，就确保 hasReceivedEmail 状态为 true。
-    // 这修复了从其他页面导航回来时，因组件重新挂载导致状态重置、图标不显示的问题。
-    if (emails.length > 0 && !hasReceivedEmail) {
-      setHasReceivedEmail(true);
-    }
-
-    // 当用户停止使用邮箱时（地址被清除），重置状态并关闭通知
     if (!address) {
-      setHasReceivedEmail(false);
-      // feat: 清除过期时间戳状态
       setExpiryTimestamp(undefined);
-      toast.dismiss("password-notification");
     } else {
-      // feat: 当地址存在时，尝试读取过期时间 cookie
       const expiry = Cookies.get("emailExpiry");
       if (expiry && !expiryTimestamp) {
         setExpiryTimestamp(parseInt(expiry, 10));
       }
     }
-
-    prevEmailsLength.current = emails.length;
-    // }, [emails, address, hasReceivedEmail]); // 依赖项包含 emails, address 和 hasReceivedEmail 以响应所有相关变化
-    // feat: 添加 expiryTimestamp 到依赖项
-  }, [emails, address, hasReceivedEmail, expiryTimestamp]);
+  }, [address, expiryTimestamp]);
 
   // 创建新邮箱地址的处理函数
   const handleCreateAddress = async () => {
     const requireTurnstile = config.turnstileEnabled;
 
-    if (temporaryPassword && temporaryPassword.length < 8) {
-      toast.error("密码至少需要 8 位");
+    if (temporaryPassword.length < 8) {
+      toast.error("创建临时邮箱时必须设置至少 8 位密码");
       return;
     }
     if (requireTurnstile && !turnstileToken) {
@@ -241,8 +156,8 @@ export function Home() {
     try {
       const authorization = await verifyTurnstile(
         selectedDomain,
+        temporaryPassword,
         requireTurnstile ? turnstileToken : undefined,
-        temporaryPassword || undefined,
       );
       const mailbox = authorization.mailbox;
       // feat: 计算并存储过期时间戳 (当前时间 + 24小时)
@@ -257,22 +172,10 @@ export function Home() {
       }
       setAddress(mailbox);
       setIsPermanentMailbox(false);
-      setUsesCustomTemporaryPassword(Boolean(temporaryPassword));
-      setNeedsPermanentPassword(false);
       setMailboxMode("temporary");
       Cookies.remove("permanentMailbox");
-      Cookies.remove("permanentPasswordPending");
-      if (temporaryPassword) {
-        Cookies.set("customMailboxPassword", "1", { expires: 1 });
-      } else {
-        Cookies.remove("customMailboxPassword");
-      }
       setMailboxToken(authorization.mailboxToken || "");
       setExpiryTimestamp(expires); // 更新状态
-      setHasReceivedEmail(false); // 重置接收邮件状态
-      if (temporaryPassword) {
-        showPasswordToast(temporaryPassword);
-      }
       setTemporaryPassword("");
       toast.success(t("Email created successfully")); // feat: 使用全局 toast 提示
     } catch (error: any) {
@@ -309,20 +212,11 @@ export function Home() {
       Cookies.remove("emailExpiry");
       setAddress(result.address);
       setIsPermanentMailbox(true);
-      setUsesCustomTemporaryPassword(false);
-      Cookies.remove("customMailboxPassword");
-      setNeedsPermanentPassword(!result.hasPassword);
-      if (!result.hasPassword) {
-        Cookies.set("permanentPasswordPending", "1", { expires: 30 });
-      } else {
-        Cookies.remove("permanentPasswordPending");
-      }
       if (result.mailboxToken) {
         Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
       }
       setMailboxToken(result.mailboxToken || "");
       setExpiryTimestamp(undefined);
-      setHasReceivedEmail(false);
       setPermanentPassword("");
       toast.success("固定邮箱已创建，密码已生效");
     } catch (error: any) {
@@ -345,8 +239,6 @@ export function Home() {
         setMailboxToken(result.mailboxToken);
       }
       setPermanentPassword("");
-      Cookies.remove("permanentPasswordPending");
-      setNeedsPermanentPassword(false);
       toast.success("密码设置成功，以后可使用邮箱和密码登录");
       queryClient.invalidateQueries({ queryKey: ["emails", address] });
     } catch (error: any) {
@@ -363,15 +255,11 @@ export function Home() {
     // feat: 移除过期时间 cookie
     Cookies.remove("emailExpiry");
     Cookies.remove("permanentMailbox");
-    Cookies.remove("permanentPasswordPending");
-    Cookies.remove("customMailboxPassword");
     setAddress(undefined);
     setIsPermanentMailbox(false);
-    setNeedsPermanentPassword(false);
     setMailboxMode("temporary");
     setMailboxToken("");
     mailboxMetaSignatureRef.current = null;
-    setHasReceivedEmail(false); // 重置状态
     setSelectedEmail(null); // 清除选中的邮件
     setExpiryTimestamp(undefined); // 清除过期时间状态
     queryClient.invalidateQueries({ queryKey: ["emails"] }); // 清理缓存
@@ -457,19 +345,12 @@ export function Home() {
       }
       setAddress(data.address);
       setIsPermanentMailbox(data.permanent === true);
-      setUsesCustomTemporaryPassword(Boolean(loginAddress && data.permanent !== true));
-      setNeedsPermanentPassword(false);
       setMailboxMode(data.permanent === true ? "permanent" : "temporary");
       if (data.permanent === true) {
         Cookies.set("permanentMailbox", "1");
-        Cookies.remove("customMailboxPassword");
       } else {
         Cookies.remove("permanentMailbox");
-        if (loginAddress) {
-          Cookies.set("customMailboxPassword", "1", { expires: 1 });
-        }
       }
-      Cookies.remove("permanentPasswordPending");
       setMailboxToken(data.mailboxToken || "");
       setExpiryTimestamp(data.permanent === true ? undefined : expiresAt); // 更新状态
       setShowPasswordModal(false); // 关闭模态框
@@ -481,14 +362,6 @@ export function Home() {
       setIsLoggingIn(false);
     }
   };
-
-  // feat: 获取密码（基于当前邮箱地址和 COOKIES_SECRET 加密）
-  const getPassword = useCallback(() => {
-    if (address && config.cookiesSecret) {
-      return encrypt(address, config.cookiesSecret);
-    }
-    return null;
-  }, [address, config.cookiesSecret]);
 
   // 新增：处理邮件选择
   const handleSelectEmail = (email: Email) => {
@@ -549,11 +422,11 @@ export function Home() {
                   />
                 </div>
               </div>
-              {isPermanentMailbox && needsPermanentPassword && (
+              {isPermanentMailbox && (
                 <div className="space-y-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
                   <div>
-                    <div className="text-sm font-medium text-amber-100">设置邮箱密码</div>
-                    <p className="mt-1 text-xs text-zinc-400">设置后可使用邮箱地址和密码登录，不需要等待收信。</p>
+                    <div className="text-sm font-medium text-amber-100">设置或修改邮箱密码</div>
+                    <p className="mt-1 text-xs text-zinc-400">密码立即生效，无需等待接收邮件。</p>
                   </div>
                   <input
                     type="password"
@@ -621,7 +494,7 @@ export function Home() {
               )}
               <div>
                 <label className="mb-2 block text-sm font-medium text-zinc-300">
-                  {mailboxMode === "permanent" ? "设置密码" : "自定义密码（可选）"}
+                  设置密码（必填）
                 </label>
                 <input
                   type="password"
@@ -632,6 +505,7 @@ export function Home() {
                       : setTemporaryPassword(event.target.value)
                   }
                   placeholder="至少 8 位"
+                  required
                   minLength={8}
                   maxLength={128}
                   className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
@@ -719,14 +593,6 @@ export function Home() {
             selectedIds={selectedIds}
             setSelectedIds={setSelectedIds}
             onSelectEmail={handleSelectEmail} // 传递选择邮件的函数
-            // feat: 传递新状态和回调函数
-            showViewPasswordButton={hasReceivedEmail && !usesCustomTemporaryPassword}
-            onShowPassword={() => {
-              const password = getPassword();
-              if (password) {
-                showPasswordToast(password);
-              }
-            }}
             // feat: 传递当前选中的邮件和关闭详情页的回调
             selectedEmail={selectedEmail}
             onCloseDetail={handleCloseDetail}

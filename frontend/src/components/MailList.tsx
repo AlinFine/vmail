@@ -10,7 +10,6 @@ import MailIcon from "./icons/MailIcon.tsx";
 import RefreshIcon from "./icons/RefreshIcon.tsx";
 import Loader from "./icons/Loader.tsx";
 import { TrashIcon } from "./icons/TrashIcon.tsx";
-import PasswordIcon from "./icons/Password.tsx"; // feat: 导入密码图标
 // feat: 导入新组件
 import { MailDetail } from "../pages/MailDetail.tsx";
 import ArrowUturnLeft from "./icons/ArrowUturnLeft.tsx";
@@ -28,8 +27,6 @@ interface MailListProps {
   setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>;
   isAddressCreated: boolean;
   onSelectEmail: (email: Email) => void;
-  showViewPasswordButton: boolean;
-  onShowPassword: () => void;
   // feat: 新增 props，用于接收当前选中的邮件和关闭详情页的回调
   selectedEmail: Email | null;
   onCloseDetail: () => void;
@@ -49,8 +46,6 @@ export function MailList({
   setSelectedIds,
   isAddressCreated,
   onSelectEmail,
-  showViewPasswordButton,
-  onShowPassword,
   selectedEmail,
   onCloseDetail,
   onExpand,
@@ -200,15 +195,6 @@ export function MailList({
           ) : (
             <>
               {/* 列表页模式下的操作按钮 */}
-              {showViewPasswordButton && (
-                <button
-                  className="p-1 rounded text-cyan-400 hover:text-cyan-300"
-                  title={t("View password")}
-                  onClick={onShowPassword}
-                >
-                  <PasswordIcon className="w-5 h-5" />
-                </button>
-              )}
               {canSendEmails && (
                 <button
                   className="p-1 rounded text-cyan-400 hover:text-cyan-300"
