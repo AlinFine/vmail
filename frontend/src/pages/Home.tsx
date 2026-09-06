@@ -14,7 +14,6 @@ import {
   loginPermanentMailbox,
   MailboxApiError,
   deleteEmails,
-  loginByPassword,
   refreshMailboxToken,
   verifyTurnstile,
   createPermanentMailbox,
@@ -22,7 +21,6 @@ import {
 } from "../services/api.ts";
 import { useConfig } from "../hooks/useConfig.ts";
 
-import { usePasswordModal } from "../components/password.tsx";
 import PasswordIcon from "../components/icons/Password.tsx";
 
 import type { Email } from "../database_types.ts";
@@ -66,9 +64,6 @@ export function Home() {
   const [permanentPassword, setPermanentPassword] = useState("");
   const [isCreatingPermanent, setIsCreatingPermanent] = useState(false);
   const [isSettingPermanentPassword, setIsSettingPermanentPassword] = useState(false);
-
-  const { PasswordModal, setShowPasswordModal } = usePasswordModal();
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const { SenderModal, setShowSenderModal } = useSenderModal(
     address || "",
@@ -340,48 +335,6 @@ export function Home() {
     deleteMutation.mutate(ids);
   };
 
-  // feat: 处理密码登录的函数
-  // fix: 移除登录时的 turnstile token 校验逻辑
-  const handleLogin = async (password: string, loginAddress?: string) => {
-    setIsLoggingIn(true);
-    try {
-      // fix: 调用更新后的 loginByPassword 函数，不再传递 token
-      const data = await loginByPassword(password, loginAddress);
-      // feat: 登录成功后也设置过期时间戳
-      const now = Date.now();
-      const expires = now + 24 * 60 * 60 * 1000;
-      Cookies.set("userMailbox", data.address, { expires: 1 });
-      const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : expires;
-      if (data.permanent === true) {
-        Cookies.remove("emailExpiry");
-      } else {
-        Cookies.set("emailExpiry", expiresAt.toString(), { expires: 1 });
-      }
-      if (data.mailboxToken) {
-        Cookies.set("mailboxToken", data.mailboxToken, { expires: data.permanent === true ? 30 : 1 });
-      } else {
-        Cookies.remove("mailboxToken");
-      }
-      setAddress(data.address);
-      setIsPermanentMailbox(data.permanent === true);
-      setMailboxMode(data.permanent === true ? "permanent" : "temporary");
-      if (data.permanent === true) {
-        Cookies.set("permanentMailbox", "1");
-      } else {
-        Cookies.remove("permanentMailbox");
-      }
-      setMailboxToken(data.mailboxToken || "");
-      setExpiryTimestamp(data.permanent === true ? undefined : expiresAt); // 更新状态
-      setShowPasswordModal(false); // 关闭模态框
-      toast.success(t("Login successful"));
-    } catch (error: any) {
-      // fix: 使用 i18n 翻译错误信息
-      toast.error(`${t("Login failed")}: ${t(error.message)}`);
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
   // 新增：处理邮件选择
   const handleSelectEmail = (email: Email) => {
     setSelectedEmail(email);
@@ -399,7 +352,6 @@ export function Home() {
 
   return (
     <main className="min-h-[calc(100vh-2rem)] w-full px-4 py-5 text-white md:px-8 md:py-8">
-      <PasswordModal onLogin={handleLogin} isLoggingIn={isLoggingIn} />
       <SenderModal />
       {selectedEmail && (
         <InfoModal
@@ -580,18 +532,11 @@ export function Home() {
                     : "创建固定邮箱"
                   : t("Create temporary email")}
               </button>
-              <button
-                type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 py-2.5 text-sm text-cyan-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
-                onClick={() => setShowPasswordModal(true)}
-              >
-                <PasswordIcon className="h-4 w-4" />
-                {t("Have a password? Login.")}
-              </button>
               <Link
                 to="/mailbox-login"
-                className="block text-center text-sm text-zinc-400 underline-offset-4 hover:text-cyan-300 hover:underline"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 py-2.5 text-sm text-cyan-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
               >
+                <PasswordIcon className="h-4 w-4" />
                 固定邮箱登录
               </Link>
             </div>
