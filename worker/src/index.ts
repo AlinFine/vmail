@@ -20,6 +20,7 @@ import {
   createMailboxToken,
   getBearerToken,
   getConfiguredSendChannel,
+  getMailboxTokenSecret,
   isAllowedMailboxAddress,
   sendRequestSchema,
   verifyMailboxToken,
@@ -52,6 +53,18 @@ export interface Env {
 
 // 初始化 Hono 应用
 const app = new Hono<{ Bindings: Env }>();
+
+app.onError((error, c) => {
+  console.error('Unhandled request error:', error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (/no such (?:table|column)/i.test(message)) {
+    return c.json({
+      code: 'DATABASE_MIGRATION_REQUIRED',
+      message: '数据库未完成升级，请重新运行部署',
+    }, 503);
+  }
+  return c.json({ code: 'INTERNAL_ERROR', message: '服务暂时不可用，请稍后重试' }, 500);
+});
 
 // 配置 CORS
 app.use('/api/v1/*', cors());
@@ -110,8 +123,9 @@ async function authorizeMailboxAccess(
   }
 
   const token = getBearerToken(c.req.header('Authorization')) || bodyToken || null;
-  const authorizedAddress = token && c.env.MAILBOX_TOKEN_SECRET
-    ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET)
+  const tokenSecret = getMailboxTokenSecret(c.env);
+  const authorizedAddress = token && tokenSecret
+    ? await verifyMailboxToken(token, tokenSecret)
     : null;
   if (authorizedAddress !== normalizedAddress) {
     return {
@@ -219,6 +233,7 @@ api.post('/verify', turnstile, async (c) => {
   const body = c.get('parsedBody') as { domain?: string; password?: string };
   const domain = body?.domain?.trim().toLowerCase();
   const password = typeof body?.password === 'string' ? body.password : '';
+  const tokenSecret = getMailboxTokenSecret(c.env);
   if (!domain || !isAllowedMailboxAddress(`mailbox@${domain}`, c.env.EMAIL_DOMAIN)) {
     return c.json({
       code: 'INVALID_MAILBOX',
@@ -228,8 +243,8 @@ api.post('/verify', turnstile, async (c) => {
   if (password && (password.length < 8 || password.length > 128)) {
     return c.json({ code: 'INVALID_PASSWORD', message: '密码长度需为 8-128 位' }, 400);
   }
-  if (password && !c.env.MAILBOX_TOKEN_SECRET) {
-    return c.json({ code: 'AUTH_UNAVAILABLE', message: '自定义密码需要配置 MAILBOX_TOKEN_SECRET' }, 503);
+  if (password && !tokenSecret) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
   }
   const mailbox = `${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}@${domain}`;
 
@@ -254,10 +269,10 @@ api.post('/verify', turnstile, async (c) => {
   await incrementAddressesCreated(db);
   await incrementDailyAddressesCreated(db);
 
-  const mailboxToken = c.env.MAILBOX_TOKEN_SECRET
+  const mailboxToken = tokenSecret
     ? await createMailboxToken(
         mailbox,
-        c.env.MAILBOX_TOKEN_SECRET,
+        tokenSecret,
         Date.now(),
         getMailboxTokenTtlSeconds(),
       )
@@ -271,10 +286,11 @@ api.post('/verify', turnstile, async (c) => {
   });
 });
 
-// Create a persistent mailbox. Password setup is enabled after the mailbox receives its first email.
+// Create a persistent mailbox and save its password in the same operation.
 api.post('/permanent-mailboxes', turnstile, async (c) => {
-  if (!c.env.MAILBOX_TOKEN_SECRET) {
-    return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置，请设置 MAILBOX_TOKEN_SECRET' }, 503);
+  const tokenSecret = getMailboxTokenSecret(c.env);
+  if (!tokenSecret) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置' }, 503);
   }
   const body = c.get('parsedBody') as { localPart?: string; domain?: string; password?: string };
   const localPart = body?.localPart?.trim().toLowerCase() || '';
@@ -321,7 +337,11 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
       createdAt: now,
       updatedAt: now,
     });
-  } catch {
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (!/unique constraint/i.test(errorMessage)) {
+      throw error;
+    }
     return c.json({
       code: 'MAILBOX_EXISTS',
       message: '该邮箱地址已存在，请直接登录',
@@ -334,7 +354,7 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
 
   const mailboxToken = await createMailboxToken(
     address,
-    c.env.MAILBOX_TOKEN_SECRET,
+    tokenSecret,
     Date.now(),
     getPermanentMailboxTokenTtlSeconds(),
   );
@@ -343,8 +363,9 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
 
 // Set or change the password for a persistent mailbox.
 api.post('/permanent-mailboxes/password', async (c) => {
-  if (!c.env.MAILBOX_TOKEN_SECRET) {
-    return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置，请设置 MAILBOX_TOKEN_SECRET' }, 503);
+  const tokenSecret = getMailboxTokenSecret(c.env);
+  if (!tokenSecret) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置' }, 503);
   }
   let body: { address?: string; password?: string; currentPassword?: string; token?: string };
   try {
@@ -369,7 +390,7 @@ api.post('/permanent-mailboxes/password', async (c) => {
   }
 
   const token = getBearerToken(c.req.header('Authorization')) || body.token || null;
-  const tokenAddress = token ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET) : null;
+  const tokenAddress = token ? await verifyMailboxToken(token, tokenSecret) : null;
   if (tokenAddress !== address) {
     return c.json({ code: 'MAILBOX_UNAUTHORIZED', message: '请先登录该固定邮箱' }, 401);
   }
@@ -380,9 +401,7 @@ api.post('/permanent-mailboxes/password', async (c) => {
     return c.json({ code: 'MAILBOX_NOT_FOUND', message: '固定邮箱不存在' }, 404);
   }
 
-  const mailboxToken = c.env.MAILBOX_TOKEN_SECRET
-    ? await createMailboxToken(address, c.env.MAILBOX_TOKEN_SECRET, Date.now(), getPermanentMailboxTokenTtlSeconds())
-    : undefined;
+  const mailboxToken = await createMailboxToken(address, tokenSecret, Date.now(), getPermanentMailboxTokenTtlSeconds());
   return c.json({ success: true, address, mailboxToken });
 });
 
@@ -396,6 +415,7 @@ api.post('/permanent-login', async (c) => {
 
   const address = normalizeMailboxAddress(body.address || '');
   const password = body.password || '';
+  const tokenSecret = getMailboxTokenSecret(c.env);
   const db = getD1DB(c.env.DB);
   const mailbox = await findMailboxByAddress(db, address);
   if (!mailbox || !mailbox.passwordHash || !mailbox.passwordSalt) {
@@ -409,7 +429,7 @@ api.post('/permanent-login', async (c) => {
   if (!passwordCheck.valid) {
     return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
   }
-  if (!c.env.MAILBOX_TOKEN_SECRET) {
+  if (!tokenSecret) {
     return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
   }
 
@@ -420,7 +440,7 @@ api.post('/permanent-login', async (c) => {
   const ttlSeconds = mailbox.isPermanent
     ? getPermanentMailboxTokenTtlSeconds()
     : getMailboxTokenTtlSeconds();
-  const mailboxToken = await createMailboxToken(address, c.env.MAILBOX_TOKEN_SECRET, Date.now(), ttlSeconds);
+  const mailboxToken = await createMailboxToken(address, tokenSecret, Date.now(), ttlSeconds);
   return c.json({
     success: true,
     address,
@@ -431,13 +451,14 @@ api.post('/permanent-login', async (c) => {
 });
 
 api.post('/mailbox-token/refresh', async (c) => {
-  if (!c.env.MAILBOX_TOKEN_SECRET) {
+  const tokenSecret = getMailboxTokenSecret(c.env);
+  if (!tokenSecret) {
     return c.json({ code: 'SEND_UNAVAILABLE', message: 'Email sending is unavailable' }, 503);
   }
 
   const token = getBearerToken(c.req.header('Authorization'));
   const mailbox = token
-    ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET)
+    ? await verifyMailboxToken(token, tokenSecret)
     : null;
   if (!mailbox || !isAllowedMailboxAddress(mailbox, c.env.EMAIL_DOMAIN)) {
     return c.json({ code: 'SEND_UNAUTHORIZED', message: 'Mailbox authorization is invalid or expired' }, 401);
@@ -452,7 +473,7 @@ api.post('/mailbox-token/refresh', async (c) => {
   return c.json({
     mailboxToken: await createMailboxToken(
       mailbox,
-      c.env.MAILBOX_TOKEN_SECRET,
+      tokenSecret,
       Date.now(),
       ttlSeconds,
     ),
@@ -462,13 +483,14 @@ api.post('/mailbox-token/refresh', async (c) => {
 // Unified, authenticated email sending endpoint.
 api.post('/send', async (c) => {
   const sendChannel = getConfiguredSendChannel(c.env);
-  if (!sendChannel || !c.env.MAILBOX_TOKEN_SECRET || !c.env.SENDER_EMAIL) {
+  const tokenSecret = getMailboxTokenSecret(c.env);
+  if (!sendChannel || !tokenSecret || !c.env.SENDER_EMAIL) {
     return c.json({ code: 'SEND_UNAVAILABLE', message: 'Email sending is unavailable' }, 503);
   }
 
   const token = getBearerToken(c.req.header('Authorization'));
   const mailbox = token
-    ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET)
+    ? await verifyMailboxToken(token, tokenSecret)
     : null;
   if (!mailbox || !isAllowedMailboxAddress(mailbox, c.env.EMAIL_DOMAIN)) {
     return c.json({ code: 'SEND_UNAUTHORIZED', message: 'Mailbox authorization is invalid or expired' }, 401);
@@ -719,7 +741,8 @@ api.post('/login', async (c) => {
   // Custom passwords are stored against the mailbox address. Keep the old
   // encrypted-password path below for legacy temporary mailboxes.
   if (requestedAddress) {
-    if (!c.env.MAILBOX_TOKEN_SECRET) {
+    const tokenSecret = getMailboxTokenSecret(c.env);
+    if (!tokenSecret) {
       return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
     }
     const db = getD1DB(c.env.DB);
@@ -743,7 +766,7 @@ api.post('/login', async (c) => {
       : getMailboxTokenTtlSeconds();
     const mailboxToken = await createMailboxToken(
       requestedAddress,
-      c.env.MAILBOX_TOKEN_SECRET,
+      tokenSecret,
       Date.now(),
       ttlSeconds,
     );

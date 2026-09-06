@@ -229,31 +229,21 @@ export async function findMailboxById(db: DrizzleD1Database, id: string) {
  * 通过邮箱地址查找邮箱
  */
 export async function findMailboxByAddress(db: DrizzleD1Database, address: string) {
-  try {
-    const result = await db
-      .select()
-      .from(mailboxes)
-      .where(eq(mailboxes.address, address))
-      .execute();
-    return result.length === 1 ? result[0] : null;
-  } catch (e) {
-    console.error('findMailboxByAddress error:', e);
-    return null;
-  }
+  const result = await db
+    .select()
+    .from(mailboxes)
+    .where(eq(mailboxes.address, address.trim().toLowerCase()))
+    .execute();
+  return result.length === 1 ? result[0] : null;
 }
 
 export async function findPermanentMailboxByAddress(db: DrizzleD1Database, address: string) {
-  try {
-    const result = await db
-      .select()
-      .from(mailboxes)
-      .where(and(eq(mailboxes.address, address.trim().toLowerCase()), eq(mailboxes.isPermanent, true)))
-      .execute();
-    return result.length === 1 ? result[0] : null;
-  } catch (e) {
-    console.error('findPermanentMailboxByAddress error:', e);
-    return null;
-  }
+  const result = await db
+    .select()
+    .from(mailboxes)
+    .where(and(eq(mailboxes.address, address.trim().toLowerCase()), eq(mailboxes.isPermanent, true)))
+    .execute();
+  return result.length === 1 ? result[0] : null;
 }
 
 export async function setMailboxPassword(
@@ -262,17 +252,12 @@ export async function setMailboxPassword(
   passwordHash: string,
   passwordSalt: string,
 ) {
-  try {
-    const result = await db
-      .update(mailboxes)
-      .set({ passwordHash, passwordSalt, verifiedAt: new Date(), updatedAt: new Date() })
-      .where(eq(mailboxes.address, address.trim().toLowerCase()))
-      .execute();
-    return result.rowsAffected > 0;
-  } catch (e) {
-    console.error('setMailboxPassword error:', e);
-    return false;
-  }
+  const result = await db
+    .update(mailboxes)
+    .set({ passwordHash, passwordSalt, verifiedAt: new Date(), updatedAt: new Date() })
+    .where(eq(mailboxes.address, address.trim().toLowerCase()))
+    .execute();
+  return result.rowsAffected > 0;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   createMailboxToken,
   getBearerToken,
   getConfiguredSendChannel,
+  getMailboxTokenSecret,
   isAllowedMailboxAddress,
   sendRequestSchema,
   verifyMailboxToken,
@@ -40,8 +41,20 @@ test("send channel is enabled only when all required configuration exists", () =
     null,
   );
   assert.equal(
-    getConfiguredSendChannel({ ...configuredEnv, MAILBOX_TOKEN_SECRET: "" }),
+    getConfiguredSendChannel({
+      ...configuredEnv,
+      MAILBOX_TOKEN_SECRET: "",
+      COOKIES_SECRET: "",
+    }),
     null,
+  );
+  assert.equal(
+    getConfiguredSendChannel({
+      ...configuredEnv,
+      MAILBOX_TOKEN_SECRET: "",
+      COOKIES_SECRET: "cookie-secret",
+    }),
+    "resend",
   );
   assert.equal(
     getConfiguredSendChannel({ ...configuredEnv, SEND_CHANNEL: "unknown" }),
@@ -70,6 +83,21 @@ test("send channel is enabled only when all required configuration exists", () =
     }),
     null,
   );
+});
+
+test("mailbox token secret falls back to the existing cookie secret", () => {
+  assert.equal(
+    getMailboxTokenSecret({
+      MAILBOX_TOKEN_SECRET: "mailbox-secret",
+      COOKIES_SECRET: "cookie-secret",
+    }),
+    "mailbox-secret",
+  );
+  assert.equal(
+    getMailboxTokenSecret({ COOKIES_SECRET: "cookie-secret" }),
+    "cookie-secret",
+  );
+  assert.equal(getMailboxTokenSecret({}), null);
 });
 
 test("mailbox tokens verify the signed address and reject tampering or expiry", async () => {

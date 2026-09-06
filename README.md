@@ -81,7 +81,7 @@
 -   `API_RATE_LIMIT_PER_MINUTE`: API 每分钟请求限制（可选，默认 100）。
 -   `SEND_CHANNEL`: 发件渠道，可选 `resend`、`mailchannels`、`cloudflare`；不配置时隐藏发信功能。旧值 `send_email` 仍兼容，但已弃用。
 -   `SENDER_EMAIL`: 固定的发件地址，必须是服务商允许或已验证的地址；临时邮箱仅作为 `Reply-To`。
--   `MAILBOX_TOKEN_SECRET`: 邮箱发信授权令牌的签名密钥，启用发信时必填，并应通过 Wrangler secret 配置。
+-   `MAILBOX_TOKEN_SECRET`: 可选的邮箱认证令牌签名密钥。未配置时自动复用 `COOKIES_SECRET`；需要独立轮换令牌密钥时再通过 Wrangler secret 配置。
 -   `RESEND_API_KEY`: Resend API 密钥，仅 `SEND_CHANNEL=resend` 时需要，通过 Wrangler secret 配置。
 -   `MAILCHANNELS_API_KEY`: MailChannels API 密钥，仅 `SEND_CHANNEL=mailchannels` 时需要，通过 Wrangler secret 配置。
 -   `SEND_RATE_LIMIT_PER_MINUTE`: 每个邮箱每分钟最大发信数（可选，默认 3）。
@@ -97,7 +97,7 @@ pnpm exec wrangler secret put RESEND_API_KEY       # Resend 时
 pnpm exec wrangler secret put MAILCHANNELS_API_KEY # MailChannels 时
 ```
 
-使用 Cloudflare Worker 原生发信时，将 `SEND_CHANNEL` 设置为 `cloudflare`，并配置 `SENDER_EMAIL` 和 `MAILBOX_TOKEN_SECRET`；不需要 `RESEND_API_KEY` 或 `MAILCHANNELS_API_KEY`。此外，需要在该域名上启用 Cloudflare Email Routing。`wrangler.toml` 中名为 `SEND_EMAIL` 的 `[[send_email]]` 绑定是 Cloudflare 固定配置，无需改名。
+使用 Cloudflare Worker 原生发信时，将 `SEND_CHANNEL` 设置为 `cloudflare`，并配置 `SENDER_EMAIL`；邮箱令牌默认使用 `COOKIES_SECRET` 签名，也可单独设置 `MAILBOX_TOKEN_SECRET`。不需要 `RESEND_API_KEY` 或 `MAILCHANNELS_API_KEY`。此外，需要在该域名上启用 Cloudflare Email Routing。`wrangler.toml` 中名为 `SEND_EMAIL` 的 `[[send_email]]` 绑定是 Cloudflare 固定配置，无需改名。
 
 ## 🔨 本地运行调试
 

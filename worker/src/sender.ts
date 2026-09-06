@@ -9,6 +9,7 @@ export interface SenderEnv {
   RESEND_API_KEY?: string;
   MAILCHANNELS_API_KEY?: string;
   MAILBOX_TOKEN_SECRET?: string;
+  COOKIES_SECRET?: string;
   SEND_EMAIL?: { send(message: any): Promise<void> };
 }
 
@@ -84,7 +85,7 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
 }
 
 export function getConfiguredSendChannel(env: SenderEnv): SendChannel | null {
-  if (!env.MAILBOX_TOKEN_SECRET || !env.SENDER_EMAIL) {
+  if (!getMailboxTokenSecret(env) || !env.SENDER_EMAIL) {
     return null;
   }
 
@@ -99,6 +100,10 @@ export function getConfiguredSendChannel(env: SenderEnv): SendChannel | null {
     default:
       return null;
   }
+}
+
+export function getMailboxTokenSecret(env: SenderEnv): string | null {
+  return env.MAILBOX_TOKEN_SECRET || env.COOKIES_SECRET || null;
 }
 
 export function isAllowedMailboxAddress(
