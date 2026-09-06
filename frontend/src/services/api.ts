@@ -3,6 +3,22 @@ import type { Email } from "../database_types";
 
 const API_BASE_URL = "/api";
 
+export class MailboxApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "MailboxApiError";
+  }
+}
+
+async function mailboxApiError(response: Response, fallback: string) {
+  const data = await response.json().catch(() => ({}));
+  return new MailboxApiError(data.message || fallback, response.status, data.code);
+}
+
 // fix: 移除不再需要的 ApiPayload 接口定义
 
 // 获取邮件列表
@@ -22,8 +38,7 @@ export async function getEmails(
     body: JSON.stringify({ address, limit, ...(mailboxToken ? { token: mailboxToken } : {}) }),
   });
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.message || "获取邮件失败");
+    throw await mailboxApiError(response, "获取邮件失败");
   }
   return response.json();
 }
@@ -43,8 +58,7 @@ export async function getMailboxMeta(address: string, mailboxToken?: string): Pr
     body: JSON.stringify({ address, ...(mailboxToken ? { token: mailboxToken } : {}) }),
   });
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.message || "获取邮箱信息失败");
+    throw await mailboxApiError(response, "获取邮箱信息失败");
   }
   return response.json();
 }
@@ -179,7 +193,7 @@ export async function setPermanentMailboxPassword(
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.message || "密码设置失败");
+    throw new MailboxApiError(data.message || "密码设置失败", response.status, data.code);
   }
   return data;
 }
@@ -195,7 +209,7 @@ export async function loginPermanentMailbox(
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.message || "邮箱或密码错误");
+    throw new MailboxApiError(data.message || "邮箱或密码错误", response.status, data.code);
   }
   return data;
 }

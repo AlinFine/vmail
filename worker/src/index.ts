@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
 import { cors } from 'hono/cors';
 // 导入数据库相关的模块
-import { deleteEmails, findEmailById, getEmailsByMessageTo, insertEmail, deleteExpiredEmails, insertApiKey, getSiteStats, incrementEmailsReceived, incrementApiKeysCreated, incrementAddressesCreated, incrementDailyAddressesCreated, incrementDailyEmailsReceived, incrementDailyApiKeysCreated, getMailboxMetaByAddress, incrementAndGetApiRateWindowCount, findMailboxByAddress, findPermanentMailboxByAddress, insertMailbox, setMailboxPassword } from './database/dao';
+import { deleteEmails, findEmailById, getEmailsByMessageTo, insertEmail, deleteExpiredEmails, insertApiKey, getSiteStats, incrementEmailsReceived, incrementApiKeysCreated, incrementAddressesCreated, incrementDailyAddressesCreated, incrementDailyEmailsReceived, incrementDailyApiKeysCreated, getMailboxMetaByAddress, incrementAndGetApiRateWindowCount, findMailboxByAddress, insertMailbox, makeMailboxPermanent, setMailboxPassword } from './database/dao';
 import { getD1DB } from './database/db';
 import { InsertEmail, insertEmailSchema } from './database/schema';
 import { nanoid } from 'nanoid/non-secure';
@@ -398,9 +398,9 @@ api.post('/permanent-mailboxes/password', async (c) => {
   }
 
   const db = getD1DB(c.env.DB);
-  const mailbox = await findPermanentMailboxByAddress(db, address);
+  const mailbox = await findMailboxByAddress(db, address);
   if (!mailbox) {
-    return c.json({ code: 'MAILBOX_NOT_FOUND', message: '固定邮箱不存在' }, 404);
+    return c.json({ code: 'MAILBOX_NOT_FOUND', message: '邮箱不存在，请重新创建' }, 404);
   }
 
   const token = getBearerToken(c.req.header('Authorization')) || body.token || null;
@@ -410,13 +410,15 @@ api.post('/permanent-mailboxes/password', async (c) => {
   }
 
   const passwordData = await hashMailboxPassword(password);
-  const updated = await setMailboxPassword(db, address, passwordData.hash, passwordData.salt);
+  // Mailboxes created by older versions may not have is_permanent set. A valid
+  // mailbox token proves ownership, so upgrade those records while saving.
+  const updated = await makeMailboxPermanent(db, address, passwordData.hash, passwordData.salt);
   if (!updated) {
-    return c.json({ code: 'MAILBOX_NOT_FOUND', message: '固定邮箱不存在' }, 404);
+    return c.json({ code: 'MAILBOX_UPDATE_FAILED', message: '邮箱密码保存失败，请重试' }, 500);
   }
 
   const mailboxToken = await createMailboxToken(address, tokenSecret, Date.now(), getPermanentMailboxTokenTtlSeconds());
-  return c.json({ success: true, address, mailboxToken });
+  return c.json({ success: true, address, permanent: true, mailboxToken });
 });
 
 api.post('/permanent-login', async (c) => {

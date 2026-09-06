@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import clsx from "clsx";
+import { Link } from "react-router-dom";
 // refactor: 将导入从 'database' 包更改为本地的类型定义文件
 import type { Email } from "../database_types";
 
@@ -33,6 +34,8 @@ interface MailListProps {
   onExpand: () => void; // feat: 新增 onExpand 回调
   canSendEmails: boolean;
   onOpenSender: () => void; // 打开发件弹窗
+  errorMessage?: string;
+  requiresLogin?: boolean;
 }
 
 export function MailList({
@@ -51,6 +54,8 @@ export function MailList({
   onExpand,
   canSendEmails,
   onOpenSender,
+  errorMessage,
+  requiresLogin,
 }: MailListProps) {
   const { t } = useTranslation();
 
@@ -83,6 +88,23 @@ export function MailList({
           <p className="text-sm text-zinc-400">
             {t("Please create a temporary email address first")}
           </p>
+        </div>
+      );
+    }
+
+    if (errorMessage) {
+      return (
+        <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <MailIcon className="h-10 w-10 text-rose-400" />
+          <p className="text-sm text-rose-200">{errorMessage}</p>
+          {requiresLogin && (
+            <Link
+              to="/mailbox-login"
+              className="rounded-md bg-cyan-500 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-400"
+            >
+              重新登录邮箱
+            </Link>
+          )}
         </div>
       );
     }

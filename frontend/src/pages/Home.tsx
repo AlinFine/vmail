@@ -11,6 +11,8 @@ import { CopyButton } from "../components/CopyButton.tsx";
 import {
   getEmails,
   getMailboxMeta,
+  loginPermanentMailbox,
+  MailboxApiError,
   deleteEmails,
   loginByPassword,
   refreshMailboxToken,
@@ -85,8 +87,8 @@ export function Home() {
     queryKey: ["emails", address, mailboxToken],
     queryFn: () => getEmails(address!, 50, mailboxToken || undefined),
     enabled: !!address, // 只有在 address 存在时才执行查询
-    refetchInterval: () =>
-      document.visibilityState === "visible" ? 5000 : false,
+    refetchInterval: (query) =>
+      !query.state.error && document.visibilityState === "visible" ? 5000 : false,
     retry: false, // 失败后不自动重试
   });
 
@@ -104,8 +106,8 @@ export function Home() {
     queryKey: ["emails-meta", address, mailboxToken],
     queryFn: () => getMailboxMeta(address!, mailboxToken || undefined),
     enabled: !!address,
-    refetchInterval: () =>
-      document.visibilityState === "visible" ? 5000 : false,
+    refetchInterval: (query) =>
+      !query.state.error && document.visibilityState === "visible" ? 5000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     retry: false,
@@ -233,7 +235,22 @@ export function Home() {
     }
     setIsSettingPermanentPassword(true);
     try {
-      const result = await setPermanentMailboxPassword(address, permanentPassword, mailboxToken || undefined);
+      let activeToken = mailboxToken || undefined;
+      let result;
+      try {
+        result = await setPermanentMailboxPassword(address, permanentPassword, activeToken);
+      } catch (error) {
+        if (!(error instanceof MailboxApiError) || ![401, 404].includes(error.status)) {
+          throw error;
+        }
+
+        // A previous D1 update could save the password but return a false
+        // "not found" response. Re-authenticate with that password and retry
+        // once so affected mailboxes recover without manual data repair.
+        const login = await loginPermanentMailbox(address, permanentPassword);
+        activeToken = login.mailboxToken;
+        result = await setPermanentMailboxPassword(address, permanentPassword, activeToken);
+      }
       if (result.mailboxToken) {
         Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
         setMailboxToken(result.mailboxToken);
@@ -266,9 +283,11 @@ export function Home() {
   };
 
   // feat: 手动刷新邮件
-  const handleRefresh = () => {
-    refetch();
-    toast.success(t("Mailbox refreshed"));
+  const handleRefresh = async () => {
+    const result = await refetch();
+    if (!result.error) {
+      toast.success(t("Mailbox refreshed"));
+    }
   };
 
   // 修改：将延长邮箱有效期改为重置邮箱有效期
@@ -599,6 +618,8 @@ export function Home() {
             onExpand={handleExpandEmail} // feat: 传递展开邮件的回调
             canSendEmails={canSendEmails}
             onOpenSender={() => setShowSenderModal(true)} // 打开发件弹窗
+            errorMessage={emailsError?.message}
+            requiresLogin={emailsError instanceof MailboxApiError && emailsError.status === 401}
           />
         </section>
       </div>

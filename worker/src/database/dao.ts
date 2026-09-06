@@ -1,8 +1,9 @@
 import { count, desc, asc, eq, and, inArray, lt, sql } from "drizzle-orm";
 // fix: 将数据库类型从 LibSQLDatabase 更改为 DrizzleD1Database，以匹配 Cloudflare D1
-import { DrizzleD1Database } from "drizzle-orm/d1";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 // refactor: 更新 schema 的导入路径
-import { emails, InsertEmail, apiKeys, InsertApiKey, mailboxes, InsertMailbox, siteStats, SiteStats, dailyStats, DailyStats, apiRateLimits } from "./schema";
+import { emails, apiKeys, mailboxes, siteStats, dailyStats, apiRateLimits } from "./schema.ts";
+import type { InsertEmail, InsertApiKey, InsertMailbox, SiteStats, DailyStats } from "./schema.ts";
 
 export async function insertEmail(db: DrizzleD1Database, email: InsertEmail) {
   try {
@@ -257,7 +258,29 @@ export async function setMailboxPassword(
     .set({ passwordHash, passwordSalt, verifiedAt: new Date(), updatedAt: new Date() })
     .where(eq(mailboxes.address, address.trim().toLowerCase()))
     .execute();
-  return result.rowsAffected > 0;
+  return result.meta.changes > 0;
+}
+
+export async function makeMailboxPermanent(
+  db: DrizzleD1Database,
+  address: string,
+  passwordHash: string,
+  passwordSalt: string,
+) {
+  const now = new Date();
+  const result = await db
+    .update(mailboxes)
+    .set({
+      isPermanent: true,
+      expiresAt: null,
+      passwordHash,
+      passwordSalt,
+      verifiedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(mailboxes.address, address.trim().toLowerCase()))
+    .execute();
+  return result.meta.changes > 0;
 }
 
 /**
