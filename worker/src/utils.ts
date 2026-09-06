@@ -79,3 +79,24 @@ export function timingSafeEqual(left: string, right: string): boolean {
   }
   return result === 0;
 }
+
+// Passwords created before PBKDF2 was introduced used one SHA-256 round.
+// Accept them once and let the caller replace the hash with PBKDF2.
+export async function verifyMailboxPassword(
+  password: string,
+  expectedHash: string,
+  salt: string,
+): Promise<{ valid: boolean; needsRehash: boolean }> {
+  const current = await hashMailboxPassword(password, salt);
+  if (timingSafeEqual(current.hash, expectedHash)) {
+    return { valid: true, needsRehash: false };
+  }
+
+  const legacyData = new TextEncoder().encode(`${salt}:${password}`);
+  const legacyDigest = await crypto.subtle.digest('SHA-256', legacyData);
+  const legacyHash = bytesToBase64Url(new Uint8Array(legacyDigest));
+  return {
+    valid: timingSafeEqual(legacyHash, expectedHash),
+    needsRehash: timingSafeEqual(legacyHash, expectedHash),
+  };
+}

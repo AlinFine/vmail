@@ -15,7 +15,7 @@ import toast from "react-hot-toast";
 interface PasswordModalProps {
   showPasswordModal: boolean;
   setShowPasswordModal: Dispatch<SetStateAction<boolean>>;
-  onLogin: (password: string) => Promise<void>; // feat: 添加 onLogin 回调处理登录逻辑
+  onLogin: (password: string, address?: string) => Promise<void>; // feat: 添加 onLogin 回调处理登录逻辑
   isLoggingIn: boolean; // feat: 添加状态以在 UI 中反映登录过程
 }
 
@@ -27,6 +27,7 @@ export default function PasswordModal({
 }: PasswordModalProps) {
   const { t } = useTranslation();
   const [password, setPassword] = useState(""); // 状态：存储输入的密码
+  const [address, setAddress] = useState("");
 
   // 提交处理器
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,7 +36,7 @@ export default function PasswordModal({
       toast.error(t("Password is required"));
       return;
     }
-    await onLogin(password);
+    await onLogin(password, address.trim() || undefined);
     // 登录成功或失败的 toast 提示已在 Home.tsx 中处理
   };
 
@@ -59,6 +60,15 @@ export default function PasswordModal({
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col mt-4 space-y-4 px-4">
           <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            type="email"
+            name="email"
+            placeholder="邮箱地址（自定义密码时填写）"
+            autoComplete="username"
+            className="rounded-md border border-slate-200 px-3 py-2 shadow-inner w-full"
+          />
+          <input
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="text"
@@ -69,7 +79,7 @@ export default function PasswordModal({
           />
           <p className="text-sm">
             {t(
-              "How to get a password? Click to create a temporary email and receive at least one email to generate a password"
+              "自定义密码登录时，请同时填写邮箱地址；旧版临时邮箱密码可直接登录"
             )}
             .
           </p>

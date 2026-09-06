@@ -21,9 +21,14 @@ export function MailboxLogin() {
     try {
       const result = await loginPermanentMailbox(address.trim(), password);
       Cookies.set("userMailbox", result.address);
-      Cookies.set("permanentMailbox", "1");
+      Cookies.set("permanentMailbox", result.permanent === false ? "0" : "1");
       Cookies.remove("permanentPasswordPending");
-      Cookies.remove("emailExpiry");
+      if (result.permanent === false && result.expiresAt) {
+        const expiresAt = new Date(result.expiresAt).getTime();
+        Cookies.set("emailExpiry", expiresAt.toString(), { expires: 1 });
+      } else {
+        Cookies.remove("emailExpiry");
+      }
       if (result.mailboxToken) {
         Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
       }
@@ -40,8 +45,8 @@ export function MailboxLogin() {
     <main className="flex min-h-screen items-center justify-center px-4 py-8 text-white">
       <section className="w-full max-w-md rounded-xl border border-white/10 bg-zinc-900/80 p-6 shadow-xl md:p-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">{"\u56fa\u5b9a\u90ae\u7bb1\u767b\u5f55"}</h1>
-          <p className="mt-2 text-sm text-zinc-400">{"\u767b\u5f55\u540e\u53ef\u67e5\u770b\u5168\u90e8\u5386\u53f2\u90ae\u4ef6\u548c\u65b0\u90ae\u4ef6"}</p>
+          <h1 className="text-2xl font-semibold">{"\u90ae\u7bb1\u767b\u5f55"}</h1>
+          <p className="mt-2 text-sm text-zinc-400">{"\u767b\u5f55\u540e\u67e5\u770b\u90ae\u7bb1\u4e2d\u7684\u5386\u53f2\u90ae\u4ef6\u548c\u65b0\u90ae\u4ef6"}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block text-sm text-zinc-300">

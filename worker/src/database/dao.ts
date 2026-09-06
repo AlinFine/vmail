@@ -266,7 +266,7 @@ export async function setMailboxPassword(
     const result = await db
       .update(mailboxes)
       .set({ passwordHash, passwordSalt, verifiedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(mailboxes.address, address.trim().toLowerCase()), eq(mailboxes.isPermanent, true)))
+      .where(eq(mailboxes.address, address.trim().toLowerCase()))
       .execute();
     return result.rowsAffected > 0;
   } catch (e) {

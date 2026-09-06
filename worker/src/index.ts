@@ -2,14 +2,14 @@ import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
 import { cors } from 'hono/cors';
 // 导入数据库相关的模块
-import { deleteEmails, findEmailById, getEmailsByMessageTo, insertEmail, deleteExpiredEmails, insertApiKey, getSiteStats, incrementEmailsReceived, incrementApiKeysCreated, incrementAddressesCreated, incrementDailyAddressesCreated, incrementDailyEmailsReceived, incrementDailyApiKeysCreated, getMailboxMetaByAddress, incrementAndGetApiRateWindowCount, findMailboxByAddress, findPermanentMailboxByAddress, insertMailbox, setMailboxPassword, getMailboxMessageCount } from './database/dao';
+import { deleteEmails, findEmailById, getEmailsByMessageTo, insertEmail, deleteExpiredEmails, insertApiKey, getSiteStats, incrementEmailsReceived, incrementApiKeysCreated, incrementAddressesCreated, incrementDailyAddressesCreated, incrementDailyEmailsReceived, incrementDailyApiKeysCreated, getMailboxMetaByAddress, incrementAndGetApiRateWindowCount, findMailboxByAddress, findPermanentMailboxByAddress, insertMailbox, setMailboxPassword } from './database/dao';
 import { getD1DB } from './database/db';
 import { InsertEmail, insertEmailSchema } from './database/schema';
 import { nanoid } from 'nanoid/non-secure';
 import PostalMime from 'postal-mime';
 import { EmailMessage } from 'cloudflare:email';
 // 导入加解密工具函数
-import { decrypt, hashMailboxPassword, timingSafeEqual } from './utils';
+import { decrypt, hashMailboxPassword, verifyMailboxPassword } from './utils';
 // 导入 v1 API
 import v1Api from './api/v1';
 import { isOpenApiEnabled, requireOpenApi } from './openapi';
@@ -103,9 +103,9 @@ async function authorizeMailboxAccess(
   const db = getD1DB(c.env.DB);
   const mailbox = await findMailboxByAddress(db, normalizedAddress);
 
-  // Existing temporary mailboxes remain public for compatibility. Permanent
-  // mailboxes require their creation/login token even before a password exists.
-  if (!mailbox?.isPermanent) {
+  // Existing temporary mailboxes remain public for compatibility. A temporary
+  // mailbox with a custom password and every permanent mailbox require a token.
+  if (!mailbox || (!mailbox.isPermanent && !mailbox.passwordHash)) {
     return { allowed: true, mailbox };
   }
 
@@ -216,17 +216,41 @@ const api = app.basePath('/api');
 // feat: 新增一个专门用于人机验证的接口。
 // 前端应在生成邮箱地址前先调用此接口。
 api.post('/verify', turnstile, async (c) => {
-  const body = c.get('parsedBody') as { domain?: string };
+  const body = c.get('parsedBody') as { domain?: string; password?: string };
   const domain = body?.domain?.trim().toLowerCase();
+  const password = typeof body?.password === 'string' ? body.password : '';
   if (!domain || !isAllowedMailboxAddress(`mailbox@${domain}`, c.env.EMAIL_DOMAIN)) {
     return c.json({
       code: 'INVALID_MAILBOX',
       message: 'Mailbox domain is not configured',
     }, 400);
   }
+  if (password && (password.length < 8 || password.length > 128)) {
+    return c.json({ code: 'INVALID_PASSWORD', message: '密码长度需为 8-128 位' }, 400);
+  }
+  if (password && !c.env.MAILBOX_TOKEN_SECRET) {
+    return c.json({ code: 'AUTH_UNAVAILABLE', message: '自定义密码需要配置 MAILBOX_TOKEN_SECRET' }, 503);
+  }
   const mailbox = `${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}@${domain}`;
 
   const db = getD1DB(c.env.DB);
+  if (password) {
+    const passwordData = await hashMailboxPassword(password);
+    const now = new Date();
+    await insertMailbox(db, {
+      id: nanoid(),
+      address: mailbox,
+      domain,
+      expiresAt: new Date(Date.now() + getMailboxTokenTtlSeconds() * 1000),
+      apiKeyId: 'web',
+      isPermanent: false,
+      passwordHash: passwordData.hash,
+      passwordSalt: passwordData.salt,
+      verifiedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
   await incrementAddressesCreated(db);
   await incrementDailyAddressesCreated(db);
 
@@ -252,15 +276,19 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
   if (!c.env.MAILBOX_TOKEN_SECRET) {
     return c.json({ code: 'AUTH_UNAVAILABLE', message: '固定邮箱认证未配置，请设置 MAILBOX_TOKEN_SECRET' }, 503);
   }
-  const body = c.get('parsedBody') as { localPart?: string; domain?: string };
+  const body = c.get('parsedBody') as { localPart?: string; domain?: string; password?: string };
   const localPart = body?.localPart?.trim().toLowerCase() || '';
   const domain = body?.domain?.trim().toLowerCase() || '';
+  const password = typeof body?.password === 'string' ? body.password : '';
 
   if (!isValidMailboxLocalPart(localPart)) {
     return c.json({ code: 'INVALID_MAILBOX', message: '邮箱名称需为 3-64 位字母、数字或 ._- 符号' }, 400);
   }
   if (!domain || !isAllowedMailboxAddress(`mailbox@${domain}`, c.env.EMAIL_DOMAIN)) {
     return c.json({ code: 'INVALID_MAILBOX', message: '邮箱域名未配置' }, 400);
+  }
+  if (password && (password.length < 8 || password.length > 128)) {
+    return c.json({ code: 'INVALID_PASSWORD', message: '密码长度需为 8-128 位' }, 400);
   }
 
   const address = `${localPart}@${domain}`;
@@ -278,6 +306,7 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
   }
 
   const now = new Date();
+  const passwordData = password ? await hashMailboxPassword(password) : null;
   try {
     await insertMailbox(db, {
       id: nanoid(),
@@ -286,9 +315,9 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
       expiresAt: null,
       apiKeyId: 'web',
       isPermanent: true,
-      passwordHash: null,
-      passwordSalt: null,
-      verifiedAt: null,
+      passwordHash: passwordData?.hash ?? null,
+      passwordSalt: passwordData?.salt ?? null,
+      verifiedAt: passwordData ? now : null,
       createdAt: now,
       updatedAt: now,
     });
@@ -309,7 +338,7 @@ api.post('/permanent-mailboxes', turnstile, async (c) => {
     Date.now(),
     getPermanentMailboxTokenTtlSeconds(),
   );
-  return c.json({ success: true, address, needsEmail: true, mailboxToken }, 201);
+  return c.json({ success: true, address, needsEmail: !password, hasPassword: Boolean(password), mailboxToken }, 201);
 });
 
 // Set or change the password for a persistent mailbox.
@@ -325,7 +354,7 @@ api.post('/permanent-mailboxes/password', async (c) => {
   }
 
   const address = normalizeMailboxAddress(body.address || '');
-  const password = body.password?.trim() || '';
+  const password = typeof body.password === 'string' ? body.password : '';
   if (!address || !password) {
     return c.json({ code: 'INVALID_REQUEST', message: '邮箱和密码不能为空' }, 400);
   }
@@ -343,13 +372,6 @@ api.post('/permanent-mailboxes/password', async (c) => {
   const tokenAddress = token ? await verifyMailboxToken(token, c.env.MAILBOX_TOKEN_SECRET) : null;
   if (tokenAddress !== address) {
     return c.json({ code: 'MAILBOX_UNAUTHORIZED', message: '请先登录该固定邮箱' }, 401);
-  }
-
-  if (!mailbox.passwordHash || !mailbox.passwordSalt) {
-    const messageCount = await getMailboxMessageCount(db, address);
-    if (messageCount < 1) {
-      return c.json({ code: 'EMAIL_REQUIRED', message: '收到至少一封邮件后才能设置密码' }, 409);
-    }
   }
 
   const passwordData = await hashMailboxPassword(password);
@@ -375,26 +397,37 @@ api.post('/permanent-login', async (c) => {
   const address = normalizeMailboxAddress(body.address || '');
   const password = body.password || '';
   const db = getD1DB(c.env.DB);
-  const mailbox = await findPermanentMailboxByAddress(db, address);
+  const mailbox = await findMailboxByAddress(db, address);
   if (!mailbox || !mailbox.passwordHash || !mailbox.passwordSalt) {
     return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
   }
+  if (mailbox.expiresAt && mailbox.expiresAt.getTime() <= Date.now()) {
+    return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
+  }
 
-  const passwordData = await hashMailboxPassword(password, mailbox.passwordSalt);
-  if (!timingSafeEqual(passwordData.hash, mailbox.passwordHash)) {
+  const passwordCheck = await verifyMailboxPassword(password, mailbox.passwordHash, mailbox.passwordSalt);
+  if (!passwordCheck.valid) {
     return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
   }
   if (!c.env.MAILBOX_TOKEN_SECRET) {
     return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
   }
 
-  const mailboxToken = await createMailboxToken(
+  if (passwordCheck.needsRehash) {
+    const passwordData = await hashMailboxPassword(password, mailbox.passwordSalt);
+    await setMailboxPassword(db, address, passwordData.hash, passwordData.salt);
+  }
+  const ttlSeconds = mailbox.isPermanent
+    ? getPermanentMailboxTokenTtlSeconds()
+    : getMailboxTokenTtlSeconds();
+  const mailboxToken = await createMailboxToken(address, c.env.MAILBOX_TOKEN_SECRET, Date.now(), ttlSeconds);
+  return c.json({
+    success: true,
     address,
-    c.env.MAILBOX_TOKEN_SECRET,
-    Date.now(),
-    getPermanentMailboxTokenTtlSeconds(),
-  );
-  return c.json({ success: true, address, mailboxToken, permanent: true });
+    mailboxToken,
+    permanent: Boolean(mailbox.isPermanent),
+    expiresAt: mailbox.expiresAt ? mailbox.expiresAt.toISOString() : null,
+  });
 });
 
 api.post('/mailbox-token/refresh', async (c) => {
@@ -672,13 +705,55 @@ api.post('/delete-emails', async (c) => {
 
 // 修复：移除登录接口的 turnstile 中间件，使其不再需要人机验证。
 api.post('/login', async (c) => {
-  // const db = getD1DB(c.env.DB); // 数据库连接不再需要用于验证
   // 修复：由于移除了 turnstile 中间件，现在需要在此处直接解析请求体。
   const body = await c.req.json();
-  const password = body?.password;
+  const password = typeof body?.password === 'string' ? body.password : '';
+  const requestedAddress = typeof body?.address === 'string'
+    ? normalizeMailboxAddress(body.address)
+    : '';
 
   if (!password) {
     return c.json({ message: 'Password is required' }, 400);
+  }
+
+  // Custom passwords are stored against the mailbox address. Keep the old
+  // encrypted-password path below for legacy temporary mailboxes.
+  if (requestedAddress) {
+    if (!c.env.MAILBOX_TOKEN_SECRET) {
+      return c.json({ code: 'AUTH_UNAVAILABLE', message: '邮箱认证未配置' }, 503);
+    }
+    const db = getD1DB(c.env.DB);
+    const mailbox = await findMailboxByAddress(db, requestedAddress);
+    if (!mailbox || !mailbox.passwordHash || !mailbox.passwordSalt) {
+      return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
+    }
+    if (mailbox.expiresAt && mailbox.expiresAt.getTime() <= Date.now()) {
+      return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
+    }
+    const passwordCheck = await verifyMailboxPassword(password, mailbox.passwordHash, mailbox.passwordSalt);
+    if (!passwordCheck.valid) {
+      return c.json({ code: 'INVALID_CREDENTIALS', message: '邮箱或密码错误' }, 401);
+    }
+    if (passwordCheck.needsRehash) {
+      const passwordData = await hashMailboxPassword(password, mailbox.passwordSalt);
+      await setMailboxPassword(db, requestedAddress, passwordData.hash, passwordData.salt);
+    }
+    const ttlSeconds = mailbox.isPermanent
+      ? getPermanentMailboxTokenTtlSeconds()
+      : getMailboxTokenTtlSeconds();
+    const mailboxToken = await createMailboxToken(
+      requestedAddress,
+      c.env.MAILBOX_TOKEN_SECRET,
+      Date.now(),
+      ttlSeconds,
+    );
+    return c.json({
+      success: true,
+      address: requestedAddress,
+      mailboxToken,
+      permanent: Boolean(mailbox.isPermanent),
+      expiresAt: mailbox.expiresAt ? mailbox.expiresAt.toISOString() : null,
+    });
   }
 
   try {

@@ -65,6 +65,10 @@ export function Home() {
     () => (Cookies.get("permanentMailbox") === "1" ? "permanent" : "temporary"),
   );
   const [permanentLocalPart, setPermanentLocalPart] = useState("");
+  const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [usesCustomTemporaryPassword, setUsesCustomTemporaryPassword] = useState(
+    () => Cookies.get("customMailboxPassword") === "1",
+  );
   const [permanentPassword, setPermanentPassword] = useState("");
   const [isCreatingPermanent, setIsCreatingPermanent] = useState(false);
   const [isSettingPermanentPassword, setIsSettingPermanentPassword] = useState(false);
@@ -225,6 +229,10 @@ export function Home() {
   const handleCreateAddress = async () => {
     const requireTurnstile = config.turnstileEnabled;
 
+    if (temporaryPassword && temporaryPassword.length < 8) {
+      toast.error("密码至少需要 8 位");
+      return;
+    }
     if (requireTurnstile && !turnstileToken) {
       toast.error(t("No captcha response"));
       return;
@@ -234,6 +242,7 @@ export function Home() {
       const authorization = await verifyTurnstile(
         selectedDomain,
         requireTurnstile ? turnstileToken : undefined,
+        temporaryPassword || undefined,
       );
       const mailbox = authorization.mailbox;
       // feat: 计算并存储过期时间戳 (当前时间 + 24小时)
@@ -248,16 +257,26 @@ export function Home() {
       }
       setAddress(mailbox);
       setIsPermanentMailbox(false);
+      setUsesCustomTemporaryPassword(Boolean(temporaryPassword));
       setNeedsPermanentPassword(false);
       setMailboxMode("temporary");
       Cookies.remove("permanentMailbox");
       Cookies.remove("permanentPasswordPending");
+      if (temporaryPassword) {
+        Cookies.set("customMailboxPassword", "1", { expires: 1 });
+      } else {
+        Cookies.remove("customMailboxPassword");
+      }
       setMailboxToken(authorization.mailboxToken || "");
       setExpiryTimestamp(expires); // 更新状态
       setHasReceivedEmail(false); // 重置接收邮件状态
+      if (temporaryPassword) {
+        showPasswordToast(temporaryPassword);
+      }
+      setTemporaryPassword("");
       toast.success(t("Email created successfully")); // feat: 使用全局 toast 提示
-    } catch (error) {
-      toast.error(t("Failed to verify captcha"));
+    } catch (error: any) {
+      toast.error(error?.message || t("Failed to verify captcha"));
       console.error("Turnstile verification failed:", error);
     }
   };
@@ -268,6 +287,10 @@ export function Home() {
       toast.error("请输入邮箱名称");
       return;
     }
+    if (permanentPassword.length < 8) {
+      toast.error("请输入至少 8 位密码");
+      return;
+    }
     if (config.turnstileEnabled && !turnstileToken) {
       toast.error(t("No captcha response"));
       return;
@@ -275,21 +298,33 @@ export function Home() {
 
     setIsCreatingPermanent(true);
     try {
-      const result = await createPermanentMailbox(localPart, selectedDomain, config.turnstileEnabled ? turnstileToken : undefined);
+      const result = await createPermanentMailbox(
+        localPart,
+        selectedDomain,
+        permanentPassword,
+        config.turnstileEnabled ? turnstileToken : undefined,
+      );
       Cookies.set("userMailbox", result.address);
       Cookies.set("permanentMailbox", "1");
-      Cookies.set("permanentPasswordPending", "1", { expires: 30 });
       Cookies.remove("emailExpiry");
       setAddress(result.address);
       setIsPermanentMailbox(true);
-      setNeedsPermanentPassword(true);
+      setUsesCustomTemporaryPassword(false);
+      Cookies.remove("customMailboxPassword");
+      setNeedsPermanentPassword(!result.hasPassword);
+      if (!result.hasPassword) {
+        Cookies.set("permanentPasswordPending", "1", { expires: 30 });
+      } else {
+        Cookies.remove("permanentPasswordPending");
+      }
       if (result.mailboxToken) {
         Cookies.set("mailboxToken", result.mailboxToken, { expires: 30 });
       }
       setMailboxToken(result.mailboxToken || "");
       setExpiryTimestamp(undefined);
       setHasReceivedEmail(false);
-      toast.success("固定邮箱已创建，请先接收一封邮件");
+      setPermanentPassword("");
+      toast.success("固定邮箱已创建，密码已生效");
     } catch (error: any) {
       toast.error(error?.message || "固定邮箱创建失败");
     } finally {
@@ -329,6 +364,7 @@ export function Home() {
     Cookies.remove("emailExpiry");
     Cookies.remove("permanentMailbox");
     Cookies.remove("permanentPasswordPending");
+    Cookies.remove("customMailboxPassword");
     setAddress(undefined);
     setIsPermanentMailbox(false);
     setNeedsPermanentPassword(false);
@@ -399,29 +435,43 @@ export function Home() {
 
   // feat: 处理密码登录的函数
   // fix: 移除登录时的 turnstile token 校验逻辑
-  const handleLogin = async (password: string) => {
+  const handleLogin = async (password: string, loginAddress?: string) => {
     setIsLoggingIn(true);
     try {
       // fix: 调用更新后的 loginByPassword 函数，不再传递 token
-      const data = await loginByPassword(password);
+      const data = await loginByPassword(password, loginAddress);
       // feat: 登录成功后也设置过期时间戳
       const now = Date.now();
       const expires = now + 24 * 60 * 60 * 1000;
       Cookies.set("userMailbox", data.address, { expires: 1 });
-      Cookies.set("emailExpiry", expires.toString(), { expires: 1 });
+      const expiresAt = data.expiresAt ? new Date(data.expiresAt).getTime() : expires;
+      if (data.permanent === true) {
+        Cookies.remove("emailExpiry");
+      } else {
+        Cookies.set("emailExpiry", expiresAt.toString(), { expires: 1 });
+      }
       if (data.mailboxToken) {
-        Cookies.set("mailboxToken", data.mailboxToken, { expires: 1 });
+        Cookies.set("mailboxToken", data.mailboxToken, { expires: data.permanent === true ? 30 : 1 });
       } else {
         Cookies.remove("mailboxToken");
       }
       setAddress(data.address);
-      setIsPermanentMailbox(false);
+      setIsPermanentMailbox(data.permanent === true);
+      setUsesCustomTemporaryPassword(Boolean(loginAddress && data.permanent !== true));
       setNeedsPermanentPassword(false);
-      setMailboxMode("temporary");
-      Cookies.remove("permanentMailbox");
+      setMailboxMode(data.permanent === true ? "permanent" : "temporary");
+      if (data.permanent === true) {
+        Cookies.set("permanentMailbox", "1");
+        Cookies.remove("customMailboxPassword");
+      } else {
+        Cookies.remove("permanentMailbox");
+        if (loginAddress) {
+          Cookies.set("customMailboxPassword", "1", { expires: 1 });
+        }
+      }
       Cookies.remove("permanentPasswordPending");
       setMailboxToken(data.mailboxToken || "");
-      setExpiryTimestamp(expires); // 更新状态
+      setExpiryTimestamp(data.permanent === true ? undefined : expiresAt); // 更新状态
       setShowPasswordModal(false); // 关闭模态框
       toast.success(t("Login successful"));
     } catch (error: any) {
@@ -499,11 +549,11 @@ export function Home() {
                   />
                 </div>
               </div>
-              {isPermanentMailbox && needsPermanentPassword && emails.length > 0 && (
+              {isPermanentMailbox && needsPermanentPassword && (
                 <div className="space-y-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3">
                   <div>
-                    <div className="text-sm font-medium text-amber-100">已收到邮件</div>
-                    <p className="mt-1 text-xs text-zinc-400">设置密码后，这个邮箱将固定保留，可随时登录查看历史邮件。</p>
+                    <div className="text-sm font-medium text-amber-100">设置邮箱密码</div>
+                    <p className="mt-1 text-xs text-zinc-400">设置后可使用邮箱地址和密码登录，不需要等待收信。</p>
                   </div>
                   <input
                     type="password"
@@ -569,6 +619,24 @@ export function Home() {
                   </div>
                 </div>
               )}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-zinc-300">
+                  {mailboxMode === "permanent" ? "设置密码" : "自定义密码（可选）"}
+                </label>
+                <input
+                  type="password"
+                  value={mailboxMode === "permanent" ? permanentPassword : temporaryPassword}
+                  onChange={(event) =>
+                    mailboxMode === "permanent"
+                      ? setPermanentPassword(event.target.value)
+                      : setTemporaryPassword(event.target.value)
+                  }
+                  placeholder="至少 8 位"
+                  minLength={8}
+                  maxLength={128}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400/60"
+                />
+              </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-zinc-300">
                   {t("Domain")}
@@ -652,7 +720,7 @@ export function Home() {
             setSelectedIds={setSelectedIds}
             onSelectEmail={handleSelectEmail} // 传递选择邮件的函数
             // feat: 传递新状态和回调函数
-            showViewPasswordButton={hasReceivedEmail}
+            showViewPasswordButton={hasReceivedEmail && !usesCustomTemporaryPassword}
             onShowPassword={() => {
               const password = getPassword();
               if (password) {

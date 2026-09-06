@@ -60,11 +60,16 @@ export interface MailboxAuthorizationResponse {
 export async function verifyTurnstile(
   domain: string,
   token?: string,
+  password?: string,
 ): Promise<MailboxAuthorizationResponse> {
   const response = await fetch(`${API_BASE_URL}/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(token ? { token, domain } : { domain }),
+    body: JSON.stringify({
+      domain,
+      ...(token ? { token } : {}),
+      ...(password ? { password } : {}),
+    }),
   });
   if (!response.ok) {
     const errorData = await response.json();
@@ -109,14 +114,16 @@ export async function deleteEmails(
 
 // feat: 添加密码登录函数
 // fix: 移除 token 参数，因为登录流程不再需要人机验证
-export async function loginByPassword(password: string): Promise<{
+export async function loginByPassword(password: string, address?: string): Promise<{
   address: string;
   mailboxToken?: string;
+  permanent?: boolean;
+  expiresAt?: string | null;
 }> {
   const response = await fetch(`${API_BASE_URL}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ password, ...(address ? { address } : {}) }),
   });
   if (!response.ok) {
     const errorData = await response.json();
@@ -132,17 +139,24 @@ export interface PermanentMailboxResponse {
   needsEmail?: boolean;
   permanent?: boolean;
   hasPassword?: boolean;
+  expiresAt?: string | null;
 }
 
 export async function createPermanentMailbox(
   localPart: string,
   domain: string,
+  password?: string,
   token?: string,
 ): Promise<PermanentMailboxResponse> {
   const response = await fetch(`${API_BASE_URL}/permanent-mailboxes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ localPart, domain, ...(token ? { token } : {}) }),
+    body: JSON.stringify({
+      localPart,
+      domain,
+      ...(password ? { password } : {}),
+      ...(token ? { token } : {}),
+    }),
   });
   const data = await response.json();
   if (!response.ok) {
